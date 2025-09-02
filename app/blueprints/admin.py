@@ -347,6 +347,11 @@ def recipes_page():
 
 @bp.route("/materials_manage")
 def materials_manage_page():
+    return render_template("material_manage_new.html")
+
+@bp.route("/materials_manage_old")
+def materials_manage_old_page():
+    """旧版物料管理页面，保留作为备份"""
     return render_template("material_manage.html")
 
 

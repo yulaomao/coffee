@@ -2,6 +2,9 @@
 {% block content %}
 <h3 class="mb-3"><i class="bi bi-box-seam"></i> 物料与料盒管理（整合）</h3>
 
+<!-- 全局消息提示区域 -->
+<div id="alertContainer" class="mb-3"></div>
+
 <div class="row g-3 mb-3">
   <div class="col-12 col-lg-6">
     <div class="card h-100">
@@ -43,9 +46,15 @@
       <div class="card-body">
         <div class="table-responsive" style="max-height:420px; overflow:auto">
           <table class="table table-sm align-middle" id="tblBin">
-            <thead><tr><th>Bin</th><th>物料</th><th>单位</th><th>容量</th><th>余量</th><th>操作</th></tr></thead>
+            <thead><tr><th>Bin</th><th>物料</th><th>单位</th><th>容量</th><th>余量</th><th>使用率</th><th>操作</th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+        <!-- 实时容量监控摘要 -->
+        <div class="mt-2">
+          <small class="text-muted">
+            <span id="binSummary">选择设备查看料盒状态</span>
+          </small>
         </div>
       </div>
     </div>
@@ -79,52 +88,394 @@
 
 <script>
 const qs = s=>document.querySelector(s);
+
+// 全局消息提示函数
+function showAlert(message, type = 'info') {
+  const alertTypes = {
+    'success': 'alert-success',
+    'error': 'alert-danger', 
+    'warning': 'alert-warning',
+    'info': 'alert-info'
+  };
+  
+  const alertHtml = `
+    <div class="alert ${alertTypes[type]} alert-dismissible fade show" role="alert">
+      ${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>`;
+  
+  const container = qs('#alertContainer');
+  container.insertAdjacentHTML('afterbegin', alertHtml);
+  
+  // 自动隐藏（除了错误消息）
+  if (type !== 'error') {
+    setTimeout(() => {
+      const alert = container.querySelector('.alert');
+      if (alert) {
+        const bsAlert = new bootstrap.Alert(alert);
+        bsAlert.close();
+      }
+    }, 5000);
+  }
+}
+
+// 异步操作包装函数，自动处理错误
+async function asyncOperation(operation, successMsg = null) {
+  try {
+    const result = await operation();
+    if (successMsg) showAlert(successMsg, 'success');
+    return result;
+  } catch (error) {
+    console.error('操作失败:', error);
+    showAlert(`操作失败: ${error.message || '未知错误'}`, 'error');
+    throw error;
+  }
+}
+
 // ------- 物料字典 -------
 const matModal = new bootstrap.Modal('#matModal'); let editingId=null;
 async function loadMat(){
   const p = new URLSearchParams(); if(qs('#q').value) p.set('q',qs('#q').value);
-  const res = await fetch('/api/material_catalog?'+p.toString()); const j = await res.json();
-  const tb = qs('#tblMat tbody'); tb.innerHTML='';
-  (j.items||[]).forEach(it=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${it.code||''}</td><td>${it.name}</td><td>${it.category||''}</td><td>${it.unit||''}</td><td>${it.default_capacity??''}</td>
-    <td><button class='btn btn-sm btn-outline-primary me-1' data-act='edit'>编辑</button><button class='btn btn-sm btn-outline-danger' data-act='del'>删除</button></td>`;
-    tr.querySelector('[data-act=edit]').onclick=()=>{ editingId=it.id; qs('#f_code').value=it.code||''; qs('#f_name').value=it.name; qs('#f_cat').value=it.category||''; qs('#f_unit').value=it.unit||''; qs('#f_cap').value=it.default_capacity??''; qs('#f_desc').value=it.description||''; qs('#f_active').checked=!!it.is_active; matModal.show(); };
-    tr.querySelector('[data-act=del]').onclick=async()=>{ if(!confirm('确认删除?'))return; await fetch('/api/material_catalog/'+it.id,{method:'DELETE'}); loadMat(); };
-    tb.appendChild(tr);
-  });
+  
+  try {
+    const res = await fetch('/api/material_catalog?'+p.toString()); 
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    const j = await res.json();
+    
+    const tb = qs('#tblMat tbody'); tb.innerHTML='';
+    (j.items||[]).forEach(it=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td>${it.code||''}</td><td>${it.name}</td><td>${it.category||''}</td><td>${it.unit||''}</td><td>${it.default_capacity??''}</td>
+      <td><button class='btn btn-sm btn-outline-primary me-1' data-act='edit'>编辑</button><button class='btn btn-sm btn-outline-danger' data-act='del'>删除</button></td>`;
+      tr.querySelector('[data-act=edit]').onclick=()=>{ editingId=it.id; qs('#f_code').value=it.code||''; qs('#f_name').value=it.name; qs('#f_cat').value=it.category||''; qs('#f_unit').value=it.unit||''; qs('#f_cap').value=it.default_capacity??''; qs('#f_desc').value=it.description||''; qs('#f_active').checked=!!it.is_active; matModal.show(); };
+      tr.querySelector('[data-act=del]').onclick=async()=>{ 
+        if(!confirm('确认删除物料"' + it.name + '"？此操作不可撤销。'))return; 
+        await asyncOperation(async () => {
+          const delRes = await fetch('/api/material_catalog/'+it.id,{method:'DELETE'});
+          if (!delRes.ok) throw new Error(`删除失败: HTTP ${delRes.status}`);
+        }, '物料删除成功');
+        loadMat(); 
+      };
+      tb.appendChild(tr);
+    });
+    
+    // 更新物料总数提示
+    const count = j.items?.length || 0;
+    if (count === 0) {
+      showAlert('暂无物料，请点击"新增"创建物料', 'info');
+    }
+    
+  } catch (error) {
+    showAlert(`加载物料列表失败: ${error.message}`, 'error');
+  }
 }
 qs('#btnSearch').onclick=loadMat;
 qs('#btnNew').onclick=()=>{ editingId=null; qs('#f_code').value=''; qs('#f_name').value=''; qs('#f_cat').value=''; qs('#f_unit').value='g'; qs('#f_cap').value=''; qs('#f_desc').value=''; qs('#f_active').checked=true; matModal.show(); };
 qs('#btnSave').onclick=async()=>{
   const body={code:qs('#f_code').value||null, name:qs('#f_name').value, category:qs('#f_cat').value||null, unit:qs('#f_unit').value||'g', default_capacity:qs('#f_cap').value?Number(qs('#f_cap').value):null, description:qs('#f_desc').value||null, is_active:qs('#f_active').checked};
-  if(!body.name){ alert('名称必填'); return; }
-  if(editingId){ await fetch('/api/material_catalog/'+editingId,{method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); }
-  else { await fetch('/api/material_catalog',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); }
-  matModal.hide(); loadMat();
+  if(!body.name?.trim()){ 
+    showAlert('物料名称不能为空', 'error');
+    qs('#f_name').focus(); 
+    return; 
+  }
+  
+  await asyncOperation(async () => {
+    const url = editingId ? `/api/material_catalog/${editingId}` : '/api/material_catalog';
+    const method = editingId ? 'PUT' : 'POST';
+    const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP ${res.status}: ${res.statusText}`);
+    }
+    return res.json();
+  }, editingId ? '物料更新成功' : '物料创建成功');
+  
+  matModal.hide(); 
+  loadMat();
 };
-qs('#csvFile').addEventListener('change', async (e)=>{ const f=e.target.files[0]; if(!f) return; const fd=new FormData(); fd.append('file', f); const res=await fetch('/api/material_catalog/import',{method:'POST', body:fd}); const j=await res.json(); alert('导入完成: '+JSON.stringify(j.data||j)); loadMat(); });
+
+qs('#csvFile').addEventListener('change', async (e)=>{ 
+  const f=e.target.files[0]; 
+  if(!f) return; 
+  
+  await asyncOperation(async () => {
+    const fd=new FormData(); 
+    fd.append('file', f); 
+    const res=await fetch('/api/material_catalog/import',{method:'POST', body:fd}); 
+    if (!res.ok) throw new Error(`导入失败: HTTP ${res.status}`);
+    const j=await res.json(); 
+    return j;
+  }, 'CSV导入完成');
+  
+  loadMat(); 
+  e.target.value = ''; // 清除文件选择
+});
 
 // ------- 设备料盒 -------
 const bindModal = new bootstrap.Modal('#bindModal'); let curIdx=null;
-async function loadBins(){ const deviceId = qs('#devSel').value; const r=await fetch(`/api/devices/${deviceId}/bins`); const rows=await r.json(); const tb=qs('#tblBin tbody'); tb.innerHTML='';
-  rows.sort((a,b)=>a.bin_index-b.bin_index).forEach(x=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${x.bin_index}</td><td>${x.material? (x.material.name + (x.material.code? ' ['+x.material.code+']':'')) : '-'}</td><td>${x.unit||''}</td><td>${x.capacity??''}</td><td>${x.remaining??''}</td>`+
-    `<td><button class='btn btn-sm btn-outline-primary me-1' data-act='bind'>绑定/更换</button>`+
-    `<button class='btn btn-sm btn-outline-secondary me-1' data-act='cap'>容量</button>`+
-    `<button class='btn btn-sm btn-outline-warning' data-act='sync'>下发</button></td>`;
-    tr.querySelector('[data-act=bind]').onclick=()=>{ curIdx=x.bin_index; qs('#mCode').value=''; qs('#mSync').checked=false; bindModal.show(); };
-    tr.querySelector('[data-act=cap]').onclick=async()=>{ const v=prompt('容量'); if(!v) return; const deviceId = qs('#devSel').value; await fetch(`/api/devices/${deviceId}/bins/${x.bin_index}/set_capacity`,{method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({capacity:Number(v)})}); loadBins(); };
-    tr.querySelector('[data-act=sync]').onclick=async()=>{ const deviceId = qs('#devSel').value; await fetch(`/api/devices/${deviceId}/bins/${x.bin_index}/downlink`,{method:'POST'}); alert('已触发下发'); };
-    tb.appendChild(tr);
-  });
+
+// 计算使用率并返回状态
+function getCapacityStatus(remaining, capacity) {
+  if (!capacity || capacity <= 0) return { rate: 0, status: 'unknown', color: 'secondary' };
+  const rate = Math.round((remaining / capacity) * 100);
+  let status, color;
+  
+  if (rate >= 70) {
+    status = '充足';
+    color = 'success';
+  } else if (rate >= 30) {
+    status = '中等';
+    color = 'warning';
+  } else if (rate >= 10) {
+    status = '偏低';
+    color = 'warning';
+  } else {
+    status = '告急';
+    color = 'danger';
+  }
+  
+  return { rate, status, color };
 }
-qs('#btnInit').onclick=async()=>{ const deviceId = qs('#devSel').value; const cnt=prompt('料盒数量'); if(!cnt) return; const cap=prompt('默认容量(可空)'); const bins=[]; for(let i=1;i<=Number(cnt);i++){ bins.push({bin_index:i, capacity: cap? Number(cap): null}); } await fetch(`/api/devices/${deviceId}/bins`,{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bins})}); loadBins(); };
-qs('#btnExport').onclick=()=>{ const deviceId = qs('#devSel').value; window.location = `/api/devices/bins/export?device_id=${deviceId}`; };
+
+// 更新料盒摘要信息
+function updateBinSummary(bins) {
+  const validBins = bins.filter(b => b.capacity && b.capacity > 0);
+  if (validBins.length === 0) {
+    qs('#binSummary').innerHTML = '暂无有效料盒数据';
+    return;
+  }
+  
+  let lowCount = 0, urgentCount = 0;
+  validBins.forEach(bin => {
+    const { rate } = getCapacityStatus(bin.remaining, bin.capacity);
+    if (rate < 30) lowCount++;
+    if (rate < 10) urgentCount++;
+  });
+  
+  const totalBins = validBins.length;
+  let summaryHtml = `共 ${totalBins} 个料盒`;
+  
+  if (urgentCount > 0) {
+    summaryHtml += ` <span class="badge bg-danger">${urgentCount} 个告急</span>`;
+  }
+  if (lowCount > urgentCount) {
+    summaryHtml += ` <span class="badge bg-warning">${lowCount - urgentCount} 个偏低</span>`;
+  }
+  if (lowCount === 0) {
+    summaryHtml += ` <span class="badge bg-success">状态良好</span>`;
+  }
+  
+  qs('#binSummary').innerHTML = summaryHtml;
+}
+
+async function loadBins() { 
+  const deviceId = qs('#devSel').value; 
+  if (!deviceId) {
+    qs('#binSummary').innerHTML = '请选择设备';
+    return;
+  }
+  
+  try {
+    const r = await fetch(`/api/devices/${deviceId}/bins`); 
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    const rows = await r.json(); 
+    const tb = qs('#tblBin tbody'); 
+    tb.innerHTML = '';
+    
+    if (!rows || rows.length === 0) {
+      tb.innerHTML = '<tr><td colspan="7" class="text-center text-muted">暂无料盒数据，请点击"初始化"创建料盒</td></tr>';
+      qs('#binSummary').innerHTML = '暂无料盒数据';
+      return;
+    }
+    
+    rows.sort((a,b) => a.bin_index - b.bin_index).forEach(x => {
+      const tr = document.createElement('tr');
+      const capacityStatus = getCapacityStatus(x.remaining, x.capacity);
+      
+      // 使用率显示
+      const usageHtml = x.capacity && x.capacity > 0 ? 
+        `<span class="badge bg-${capacityStatus.color}">${capacityStatus.rate}%</span>` :
+        '<span class="text-muted">-</span>';
+      
+      tr.innerHTML = `<td>${x.bin_index}</td>
+        <td>${x.material? (x.material.name + (x.material.code? ' ['+x.material.code+']':'')) : '<span class="text-muted">未绑定</span>'}</td>
+        <td>${x.unit||''}</td>
+        <td>${x.capacity??''}</td>
+        <td>${x.remaining??''}</td>
+        <td>${usageHtml}</td>
+        <td><button class='btn btn-sm btn-outline-primary me-1' data-act='bind'>绑定/更换</button>
+        <button class='btn btn-sm btn-outline-secondary me-1' data-act='cap'>容量</button>
+        <button class='btn btn-sm btn-outline-warning' data-act='sync'>下发</button></td>`;
+      
+      tr.querySelector('[data-act=bind]').onclick = () => { 
+        curIdx = x.bin_index; 
+        qs('#mCode').value = ''; 
+        qs('#mSync').checked = false; 
+        bindModal.show(); 
+      };
+      
+      tr.querySelector('[data-act=cap]').onclick = async () => { 
+        const currentCap = x.capacity || 0;
+        const v = prompt(`设置料盒 ${x.bin_index} 的容量 (当前: ${currentCap})`); 
+        if (!v || v === currentCap.toString()) return;
+        const newCap = Number(v);
+        if (isNaN(newCap) || newCap < 0) {
+          showAlert('请输入有效的容量数值', 'error');
+          return;
+        }
+        
+        await asyncOperation(async () => {
+          const res = await fetch(`/api/devices/${deviceId}/bins/${x.bin_index}/set_capacity`,{
+            method:'PUT', 
+            headers:{'Content-Type':'application/json'}, 
+            body: JSON.stringify({capacity: newCap})
+          });
+          if (!res.ok) throw new Error(`设置容量失败: HTTP ${res.status}`);
+        }, `料盒 ${x.bin_index} 容量已设置为 ${newCap}`);
+        
+        loadBins(); 
+      };
+      
+      tr.querySelector('[data-act=sync]').onclick = async () => { 
+        await asyncOperation(async () => {
+          const res = await fetch(`/api/devices/${deviceId}/bins/${x.bin_index}/downlink`,{method:'POST'});
+          if (!res.ok) throw new Error(`下发失败: HTTP ${res.status}`);
+        }, `料盒 ${x.bin_index} 下发指令已发送`);
+      };
+      
+      tb.appendChild(tr);
+    });
+    
+    // 更新摘要信息
+    updateBinSummary(rows);
+    
+  } catch (error) {
+    showAlert(`加载料盒数据失败: ${error.message}`, 'error');
+    qs('#binSummary').innerHTML = '加载失败';
+  }
+}
+qs('#btnInit').onclick = async () => { 
+  const deviceId = qs('#devSel').value; 
+  if (!deviceId) {
+    showAlert('请先选择设备', 'warning');
+    return;
+  }
+  
+  const cnt = prompt('要初始化的料盒数量 (1-20)'); 
+  if (!cnt) return;
+  
+  const binCount = Number(cnt);
+  if (isNaN(binCount) || binCount < 1 || binCount > 20) {
+    showAlert('料盒数量必须是 1-20 之间的数字', 'error');
+    return;
+  }
+  
+  const cap = prompt('默认容量 (留空表示不设置，可稍后单独设置)'); 
+  const capacity = cap ? Number(cap) : null;
+  
+  const bins = [];
+  for(let i = 1; i <= binCount; i++){ 
+    bins.push({bin_index: i, capacity}); 
+  }
+  
+  await asyncOperation(async () => {
+    const res = await fetch(`/api/devices/${deviceId}/bins`, {
+      method: 'POST', 
+      headers: {'Content-Type':'application/json'}, 
+      body: JSON.stringify({bins})
+    });
+    if (!res.ok) throw new Error(`初始化失败: HTTP ${res.status}`);
+  }, `成功初始化 ${binCount} 个料盒`);
+  
+  loadBins(); 
+};
+
+qs('#btnExport').onclick = () => { 
+  const deviceId = qs('#devSel').value; 
+  if (!deviceId) {
+    showAlert('请先选择设备', 'warning');
+    return;
+  }
+  window.open(`/api/devices/bins/export?device_id=${deviceId}`); 
+};
+
 qs('#devSel').addEventListener('change', loadBins);
 
+// 绑定物料处理
+qs('#btnBindSubmit').onclick = async () => {
+  const deviceId = qs('#devSel').value;
+  const materialCode = qs('#mCode').value?.trim();
+  
+  if (!deviceId || !curIdx) {
+    showAlert('缺少设备或料盒信息', 'error');
+    return;
+  }
+  
+  if (!materialCode) {
+    showAlert('请输入物料编码或ID', 'error');
+    qs('#mCode').focus();
+    return;
+  }
+  
+  const shouldSync = qs('#mSync').checked;
+  
+  await asyncOperation(async () => {
+    // 判断是ID还是编码
+    const isId = /^\d+$/.test(materialCode);
+    const payload = isId ? 
+      {material_id: Number(materialCode), sync_to_device: shouldSync} :
+      {material_code: materialCode, sync_to_device: shouldSync};
+    
+    const res = await fetch(`/api/devices/${deviceId}/bins/${curIdx}/bind`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || `绑定失败: HTTP ${res.status}`);
+    }
+  }, `料盒 ${curIdx} 绑定成功${shouldSync ? '，下发指令已发送' : ''}`);
+  
+  bindModal.hide();
+  loadBins();
+};
+
+// 添加实时刷新功能
+let refreshTimer = null;
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    const deviceId = qs('#devSel').value;
+    if (deviceId) {
+      loadBins(); // 静默刷新，不显示成功消息
+    }
+  }, 30000); // 每30秒刷新一次
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+// 页面可见性变化时控制自动刷新
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopAutoRefresh();
+  } else {
+    startAutoRefresh();
+  }
+});
+
 // 初始加载
-loadMat(); loadBins();
+loadMat(); 
+loadBins();
+startAutoRefresh();
+
+// 页面卸载时清理定时器
+window.addEventListener('beforeunload', stopAutoRefresh);
 </script>
 {% endblock %}

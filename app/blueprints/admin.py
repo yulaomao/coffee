@@ -351,12 +351,8 @@ def recipes_page():
 
 @bp.route("/materials_manage")
 def materials_manage_page():
+    """统一的物料管理中心页面"""
     return render_template("material_manage.html")
-
-@bp.route("/materials")
-def materials_catalog_page():
-    devices = Device.query.order_by(Device.created_at.desc()).limit(200).all()
-    return render_template("materials.html", devices=devices)
 
 
 @bp.route("/devices/<int:device_id>/bins_page")

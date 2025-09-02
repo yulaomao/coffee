@@ -11,7 +11,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request, session
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
-from ..models import Device, Order, RemoteCommand, CommandResult, Merchant, DeviceMaterial, User, CleaningLog, OperationLog, MaterialCatalog
+from ..models import Device, Order, RemoteCommand, CommandResult, Merchant, User, CleaningLog, OperationLog, MaterialCatalog, DeviceBin
 from ..utils.security import merchant_scope_filter
 from ..tasks.queue import Task, submit_task
 from ..models import CustomFieldConfig
@@ -161,7 +161,7 @@ def device_detail(device_no: str):
     q = Device.query.filter_by(device_no=device_no)
     q = merchant_scope_filter(q, claims)
     device = q.first_or_404()
-    materials = DeviceMaterial.query.filter_by(device_id=device.id).all()
+    materials = DeviceBin.query.filter_by(device_id=device.id).all()
     recent_orders = Order.query.filter_by(device_id=device.id).order_by(Order.created_at.desc()).limit(10).all()
     # 简单的命令历史（最近10条）
     from ..models import RemoteCommand

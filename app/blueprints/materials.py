@@ -1,6 +1,6 @@
 """物料管理 API：
 - 兼容保留：
-    - GET/PUT /api/devices/<id>/materials（基于旧 DeviceMaterial 模型）
+    - GET/PUT /api/devices/<id>/materials（向后兼容，基于 DeviceBin 实现）
     - GET /api/materials 与 /api/materials/export：返回设备-物料余量汇总列表（用于旧物料管理页）
 
 - 新增（完整“物料与料盒管理”）：
@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from ..models import DeviceMaterial, Device, MaterialCatalog, User, OperationLog, DeviceBin, RemoteCommand
+from ..models import Device, MaterialCatalog, User, OperationLog, DeviceBin, RemoteCommand
 from ..extensions import db
 from ..utils.security import merchant_scope_filter
 from datetime import datetime
@@ -37,31 +37,66 @@ bp = Blueprint("materials", __name__)
 @bp.route("/api/devices/<int:device_id>/materials", methods=["GET", "PUT"])
 @jwt_required()
 def device_materials(device_id: int):
+    """设备物料接口，基于新的 DeviceBin 模型，保持向后兼容的 API 格式"""
     claims = get_jwt_identity() or {}
-    # 设备维度物料需要基于设备的 merchant_id 进行过滤
-    q = db.session.query(DeviceMaterial).join(Device, Device.id == DeviceMaterial.device_id)
-    q = q.filter(DeviceMaterial.device_id == device_id)
+    
+    # 权限检查
     role = claims.get('role'); mid = claims.get('merchant_id')
     if role != 'superadmin' and mid is not None:
-        q = q.filter(Device.merchant_id == int(mid))
+        device = Device.query.filter_by(id=device_id, merchant_id=int(mid)).first()
+        if not device:
+            return jsonify({"ok": False, "message": "设备不存在或无权限"}), 404
+    else:
+        device = Device.query.get(device_id)
+        if not device:
+            return jsonify({"ok": False, "message": "设备不存在"}), 404
+    
     if request.method == "GET":
-        items = q.all()
+        # 查询设备的料盒数据，转换为旧格式
+        bins = DeviceBin.query.filter_by(device_id=device_id).all()
         fmt = request.args.get('format')
+        
         if fmt == 'csv':
             from ..utils.helpers import csv_response
-            rows = [[m.id, m.material_id, m.remain, getattr(m,'capacity',0), m.threshold] for m in items]
-            return csv_response(["id","material_id","remain","capacity","threshold"], rows, filename=f"device_{device_id}_materials.csv")
-        return jsonify({"items": [
-            {"id": m.id, "material_id": m.material_id, "remain": m.remain, "capacity": getattr(m,'capacity',0), "threshold": m.threshold}
-            for m in items
-        ]})
-    else:
+            rows = [[
+                bin.bin_index, 
+                bin.material_id or 0, 
+                bin.remaining or 0.0, 
+                bin.capacity or 0.0, 
+                10.0  # 默认阈值，因为 DeviceBin 没有 threshold 字段
+            ] for bin in bins]
+            return csv_response(["bin_id","material_id","remain","capacity","threshold"], 
+                              rows, filename=f"device_{device_id}_materials.csv")
+        
+        # JSON 格式，保持向后兼容
+        items = []
+        for bin in bins:
+            items.append({
+                "id": bin.bin_index,  # 使用 bin_index 作为 ID
+                "material_id": bin.material_id or 0,
+                "remain": bin.remaining or 0.0,
+                "capacity": bin.capacity or 0.0,
+                "threshold": 10.0  # 默认阈值
+            })
+        
+        return jsonify({"items": items})
+    
+    else:  # PUT
         data: dict[str, Any] = request.get_json(force=True)
+        
         for item in data.get("items", []):
-            dm = DeviceMaterial.query.filter_by(device_id=device_id, material_id=item.get("material_id")).first()
-            if dm:
-                dm.threshold = float(item.get("threshold", dm.threshold))
-                dm.remain = float(item.get("remain", dm.remain))
+            # 查找对应的料盒（通过 material_id 匹配）
+            material_id = item.get("material_id")
+            if material_id:
+                bin = DeviceBin.query.filter_by(device_id=device_id, material_id=material_id).first()
+                if bin:
+                    # 更新余量和容量
+                    if "remain" in item:
+                        bin.remaining = float(item["remain"])
+                    if "capacity" in item:
+                        bin.capacity = float(item["capacity"])
+                    # threshold 在 DeviceBin 中不存在，跳过
+        
         db.session.commit()
         return jsonify({"msg": "updated"})
 
@@ -955,7 +990,7 @@ def materials_export():
         q = q.filter((MaterialCatalog.category == mtype) | (MaterialCatalog.name == mtype))
     if name:
         like = f"%{name}%"; q = q.filter((MaterialCatalog.name.like(like)) | (Device.model.like(like)))
-    rows = q.order_by(Device.device_no.asc(), DeviceMaterial.material_id.asc()).all()
+    rows = q.order_by(Device.device_no.asc(), DeviceBin.bin_index.asc()).all()
     from ..utils.helpers import csv_response
     csv_rows = []
     for r in rows:

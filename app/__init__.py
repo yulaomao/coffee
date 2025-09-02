@@ -46,6 +46,12 @@ def create_app() -> Flask:
     # 数据库自动初始化（最小可运行版）
     with app.app_context():
         db.create_all()
+        # 轻量 SQLite 架构升级：为旧库补齐新增列（开发/演示用）
+        try:
+            from .utils.upgrade import ensure_sqlite_schema
+            ensure_sqlite_schema(db.engine)
+        except Exception:
+            pass
         # 若无用户则创建默认商户与管理员
         if not User.query.first():
             m = Merchant(name="默认商户")

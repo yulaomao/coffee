@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import (  # noqa: E402
-    User, Merchant, Device, Order, Product, Fault, WorkOrder, UpgradePackage, DeviceMaterial, CleaningLog, MaterialCatalog
+    User, Merchant, Device, Order, Product, Fault, WorkOrder, UpgradePackage, DeviceMaterial, CleaningLog, MaterialCatalog, DeviceBin
 )
 from app.utils.security import hash_password  # noqa: E402
 from app.blueprints.recipes import Recipe  # noqa: E402
@@ -48,16 +48,16 @@ def ensure_basics():
             db.session.add(Product(name=name, price=price))
     # 物料目录（示例）
     mats = [
-        (1, "咖啡豆", "豆"),
-        (2, "奶粉", "奶粉"),
-        (3, "糖浆", "糖浆"),
-        (4, "纸杯", "纸耗"),
-        (5, "搅拌棒", "辅材"),
+        (1, "bean-A", "咖啡豆", "bean", "g", 120.0),
+        (2, "milk-A", "奶粉", "milk", "g", 800.0),
+        (3, "syrup-A", "糖浆", "syrup", "ml", 1000.0),
+        (4, "cup-12oz", "纸杯", "cup", "pcs", 100.0),
+        (5, "stir-rod", "搅拌棒", "accessory", "pcs", 200.0),
     ]
-    for mid, name, cat in mats:
+    for mid, code, name, cat, unit, defcap in mats:
         mc = MaterialCatalog.query.filter_by(id=mid).first()
         if not mc:
-            mc = MaterialCatalog(id=mid, name=name, unit="g" if cat in ("豆","奶粉","糖浆") else "pcs", category=cat)
+            mc = MaterialCatalog(id=mid, code=code, name=name, unit=unit, category=cat, default_capacity=defcap)
             db.session.add(mc)
     db.session.commit()
     return m
@@ -85,6 +85,14 @@ def seed_quick():
         db.session.add(o1)
     db.session.commit()
     print("[quick] 管理员 admin/admin123，设备 DEV-1001/DEV-1002，示例订单 1 条。")
+    # 初始化设备料盒（新架构）
+    for d in (d1, d2):
+        if DeviceBin.query.filter_by(device_id=d.id).count() == 0:
+            # 简单三格：1-咖啡豆，2-奶粉，3-糖浆
+            db.session.add(DeviceBin(device_id=d.id, bin_index=1, material_id=1, capacity=120.0, unit='g', custom_label='咖啡豆'))
+            db.session.add(DeviceBin(device_id=d.id, bin_index=2, material_id=2, capacity=800.0, unit='g', custom_label='奶粉'))
+            db.session.add(DeviceBin(device_id=d.id, bin_index=3, material_id=3, capacity=1000.0, unit='ml', custom_label='糖浆'))
+    db.session.commit()
 
 
 def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, merchants: int):
@@ -114,12 +122,20 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
         devs.append(d)
     db.session.commit()
 
-    # 物料（为每台设备造 3-4 个料盒）
+    # 旧物料（为每台设备造 3-4 个料盒，兼容旧页面）
     for d in devs:
         exist = DeviceMaterial.query.filter_by(device_id=d.id).count()
         if not exist:
             for mid in range(1, 5):
                 db.session.add(DeviceMaterial(device_id=d.id, material_id=mid, remain=random.uniform(10, 100), capacity=100, threshold=10))
+    db.session.commit()
+
+    # 新料盒（DeviceBin）初始化（每台 3 格）
+    for d in devs:
+        if DeviceBin.query.filter_by(device_id=d.id).count() == 0:
+            db.session.add(DeviceBin(device_id=d.id, bin_index=1, material_id=1, capacity=120.0, unit='g'))
+            db.session.add(DeviceBin(device_id=d.id, bin_index=2, material_id=2, capacity=800.0, unit='g'))
+            db.session.add(DeviceBin(device_id=d.id, bin_index=3, material_id=3, capacity=1000.0, unit='ml'))
     db.session.commit()
 
     # 订单

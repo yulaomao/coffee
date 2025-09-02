@@ -350,6 +350,24 @@ def materials_manage_page():
     return render_template("material_manage.html")
 
 
+# 新物料字典与料盒页面
+@bp.route("/materials")
+def materials_catalog_page():
+    devices = Device.query.order_by(Device.created_at.desc()).limit(200).all()
+    return render_template("materials.html", devices=devices)
+
+
+@bp.route("/devices/<int:device_id>/bins_page")
+def device_bins_page(device_id: int):
+    d = Device.query.get_or_404(device_id)
+    return render_template("device_bins.html", device=d)
+
+
+@bp.route("/devices/bins/bulk")
+def device_bins_bulk_page():
+    return render_template("device_bins_bulk.html")
+
+
 @bp.route("/faults")
 def faults_page():
     faults = Fault.query.order_by(Fault.created_at.desc()).limit(100).all()

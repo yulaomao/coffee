@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-grid-3x3-gap"></i> 设备料盒配置 - {{ device.device_no }}</h4>
+<div id="pageData" data-device-id="{{ device.id }}" hidden></div>
+<div class="d-flex gap-2 mb-2">
+  <button id="btnInit" class="btn btn-sm btn-outline-primary">初始化料盒</button>
+  <button id="btnExport" class="btn btn-sm btn-outline-secondary">导出 CSV</button>
+  <a class="btn btn-sm btn-outline-secondary" href="/devices/bins/bulk">批量绑定</a>
+</div>
+<table class="table table-sm align-middle" id="tbl"><thead>
+  <tr><th>Bin</th><th>物料</th><th>单位</th><th>容量</th><th>余量</th><th>上次同步</th><th>操作</th></tr>
+</thead><tbody></tbody></table>
+
+<!-- 绑定弹窗 -->
+<div class="modal" tabindex="-1" id="bindModal"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">绑定物料</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mb-2"><label class="form-label">物料编码或ID</label><input id="mCode" class="form-control" placeholder="material_code 或 material_id"></div>
+    <div class="form-check"><input id="mSync" class="form-check-input" type="checkbox"><label class="form-check-label">立即下发到设备</label></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button id="btnBindSubmit" class="btn btn-primary">绑定</button></div>
+</div></div></div>
+
+<script>
+const deviceId = Number(document.getElementById('pageData').dataset.deviceId);
+const qs = s=>document.querySelector(s); let curIdx=null; const bindModal=new bootstrap.Modal('#bindModal');
+async function load(){ const r=await fetch(`/api/devices/${deviceId}/bins`); const rows=await r.json(); const tb=qs('#tbl tbody'); tb.innerHTML='';
+  rows.sort((a,b)=>a.bin_index-b.bin_index).forEach(x=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${x.bin_index}</td><td>${x.material? (x.material.name + (x.material.code? ' ['+x.material.code+']':'')) : '-'}</td><td>${x.unit||''}</td><td>${x.capacity??''}</td><td>${x.remaining??''}</td><td>${x.last_sync_at||''}</td>`+
+    `<td><button class='btn btn-sm btn-outline-primary me-1' data-act='bind'>绑定/更换</button>`+
+    `<button class='btn btn-sm btn-outline-secondary me-1' data-act='cap'>设置容量</button>`+
+    `<button class='btn btn-sm btn-outline-secondary me-1' data-act='label'>设置标签</button>`+
+    `<button class='btn btn-sm btn-outline-warning' data-act='sync'>下发</button></td>`;
+    tr.querySelector('[data-act=bind]').onclick=()=>{ curIdx=x.bin_index; qs('#mCode').value=''; qs('#mSync').checked=false; bindModal.show(); };
+    tr.querySelector('[data-act=cap]').onclick=async()=>{ const v=prompt('容量'); if(!v) return; await fetch(`/api/devices/${deviceId}/bins/${x.bin_index}/set_capacity`,{method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({capacity:Number(v)})}); load(); };
+    tr.querySelector('[data-act=label]').onclick=async()=>{ const v=prompt('标签'); await fetch(`/api/devices/${deviceId}/bins/${x.bin_index}/set_label`,{method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({custom_label:v||''})}); load(); };
+    tr.querySelector('[data-act=sync]').onclick=async()=>{ await fetch(`/api/devices/${deviceId}/bins/${x.bin_index}/downlink`,{method:'POST'}); alert('已触发下发'); };
+    tb.appendChild(tr);
+  });
+}
+qs('#btnBindSubmit').onclick=async()=>{ const v=qs('#mCode').value.trim(); if(!v) return; const body = v.match(/^\d+$/)? {material_id:Number(v), sync: qs('#mSync').checked} : {material_code:v, sync: qs('#mSync').checked}; await fetch(`/api/devices/${deviceId}/bins/${curIdx}/bind`,{method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); bindModal.hide(); load(); };
+qs('#btnInit').onclick=async()=>{ const cnt=prompt('料盒数量'); if(!cnt) return; const cap=prompt('默认容量(可空)'); const bins=[]; for(let i=1;i<=Number(cnt);i++){ bins.push({bin_index:i, capacity: cap? Number(cap): null}); } await fetch(`/api/devices/${deviceId}/bins`,{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bins})}); load(); };
+qs('#btnExport').onclick=()=>{ window.location = `/api/devices/bins/export?device_id=${deviceId}`; };
+load();
+</script>
+{% endblock %}

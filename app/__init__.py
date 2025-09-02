@@ -66,6 +66,12 @@ def create_app() -> Flask:
             )
             db.session.add(admin)
             db.session.commit()
+        # 启动自举：确保物料字典与料盒最小数据存在（幂等）
+        try:
+            from .utils.bootstrap import ensure_bootstrap_materials
+            ensure_bootstrap_materials()
+        except Exception:
+            pass
 
     # 启动后台任务 worker
     start_background_worker(app)

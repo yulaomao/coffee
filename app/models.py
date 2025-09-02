@@ -59,9 +59,15 @@ class Product(db.Model, TimestampMixin):
 class MaterialCatalog(db.Model, TimestampMixin):
     __tablename__ = "material_catalog"
     id: Mapped[int] = mapped_column(primary_key=True)
+    # 新增字段，兼容旧数据：code 可为空以便平滑迁移，但推荐唯一填写
+    code: Mapped[Optional[str]] = mapped_column(nullable=True, unique=True, index=True)
     name: Mapped[str] = mapped_column(nullable=False, unique=True)
+    category: Mapped[Optional[str]] = mapped_column(nullable=True)  # e.g. bean/milk/syrup/cup/accessory
     unit: Mapped[str] = mapped_column(nullable=False, default="g")
-    category: Mapped[Optional[str]] = mapped_column(nullable=True)  # 物料类型：豆/奶粉/糖浆/纸杯/搅拌棒 等
+    default_capacity: Mapped[Optional[float]] = mapped_column(nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True, index=True)
 
 
 class Device(db.Model, TimestampMixin):
@@ -136,6 +142,34 @@ class DeviceMaterial(db.Model, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("device_id", "material_id", name="uq_device_material"),
     )
+
+
+class DeviceBin(db.Model, TimestampMixin):
+    __tablename__ = "device_bins"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    bin_index: Mapped[int] = mapped_column(nullable=False)  # 1..N
+    material_id: Mapped[Optional[int]] = mapped_column(ForeignKey("material_catalog.id"), nullable=True)
+    capacity: Mapped[Optional[float]] = mapped_column(nullable=True)
+    remaining: Mapped[Optional[float]] = mapped_column(nullable=True)
+    unit: Mapped[Optional[str]] = mapped_column(nullable=True)
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    custom_label: Mapped[Optional[str]] = mapped_column(nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("device_id", "bin_index", name="uq_device_bin"),
+    )
+
+
+class MaterialImportLog(db.Model, TimestampMixin):
+    __tablename__ = "material_import_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    filename: Mapped[Optional[str]] = mapped_column(nullable=True)
+    total: Mapped[Optional[int]] = mapped_column(nullable=True)
+    inserted: Mapped[Optional[int]] = mapped_column(nullable=True)
+    updated: Mapped[Optional[int]] = mapped_column(nullable=True)
+    errors: Mapped[Optional[str]] = mapped_column(nullable=True)
 
 
 class Fault(db.Model, TimestampMixin):
@@ -218,6 +252,8 @@ class OperationLog(db.Model, TimestampMixin):
     target_id: Mapped[Optional[int]] = mapped_column(nullable=True)
     ip: Mapped[Optional[str]] = mapped_column(nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(nullable=True)
+    # 新增：用于记录操作详情（JSON 串或对象），保持可空
+    raw_payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
 
 class CustomFieldConfig(db.Model, TimestampMixin):

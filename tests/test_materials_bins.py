@@ -6,10 +6,16 @@ from app.utils.security import hash_password
 
 def login_token(client):
     with client.application.app_context():
-        m = Merchant(name="M1")
-        db.session.add(m); db.session.flush()
-        u = User(username="u_mat", password_hash=hash_password("p"), role="superadmin", merchant_id=m.id)
-        db.session.add(u); db.session.commit()
+        m = Merchant.query.filter_by(name="M1").first()
+        if not m:
+            m = Merchant(name="M1")
+            db.session.add(m)
+            db.session.flush()
+        u = User.query.filter_by(username="u_mat").first()
+        if not u:
+            u = User(username="u_mat", password_hash=hash_password("p"), role="superadmin", merchant_id=m.id)
+            db.session.add(u)
+        db.session.commit()
     rv = client.post("/api/auth/login", json={"username": "u_mat", "password": "p"})
     assert rv.status_code == 200
     return rv.get_json()["access_token"]

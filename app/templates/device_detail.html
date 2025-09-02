@@ -3,6 +3,7 @@
 <h3>设备详情：{{ device.device_no }}</h3>
 <div class="mb-3">状态：{{ device.status }} | 固件：{{ device.firmware_version or '-' }}</div>
 <h5>最近订单</h5>
+{% if recent_orders %}
 <table class="table table-sm">
   <thead><tr><th>ID</th><th>金额</th><th>状态</th><th>时间</th></tr></thead>
   <tbody>
@@ -11,6 +12,12 @@
     {% endfor %}
   </tbody>
 </table>
+{% else %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle"></i> 该设备暂无订单记录。
+  <br><small class="text-muted">订单数据会在设备产生交易后显示在此处。</small>
+</div>
+{% endif %}
 <div class="card mt-3">
   <div class="card-header">下发命令（示例）</div>
   <div class="card-body">

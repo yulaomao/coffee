@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, date
 from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
-from ..models import Device, Order, Fault, DeviceMaterial, Merchant, MaterialCatalog
+from ..models import Device, Order, Fault, Merchant, MaterialCatalog, DeviceBin
 
 bp = Blueprint("admin", __name__, url_prefix="")
 
@@ -122,13 +122,15 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
     fault_labels = [r[0] for r in fault_counts]
     fault_data = [int(r[1]) for r in fault_counts]
 
-    # 物料风险与告警
-    # 告警 Top5（remain<threshold）与 即将告警 Top5（threshold<=remain<=1.2*threshold）
+    # 物料风险与告警 - 基于 DeviceBin 低容量告警（使用默认阈值 10%）
     alerts_q = (
-        db.session.query(DeviceMaterial, Device, MaterialCatalog)
-        .join(Device, Device.id == DeviceMaterial.device_id)
-        .outerjoin(MaterialCatalog, MaterialCatalog.id == DeviceMaterial.material_id)
-        .filter(DeviceMaterial.remain < DeviceMaterial.threshold)
+        db.session.query(DeviceBin, Device, MaterialCatalog)
+        .join(Device, Device.id == DeviceBin.device_id)
+        .outerjoin(MaterialCatalog, MaterialCatalog.id == DeviceBin.material_id)
+        .filter(DeviceBin.capacity.isnot(None))
+        .filter(DeviceBin.remaining.isnot(None))
+        .filter(DeviceBin.capacity > 0)
+        .filter(DeviceBin.remaining / DeviceBin.capacity < 0.1)  # 小于10%视为告警
     )
     if merchant_id:
         try:
@@ -143,32 +145,35 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
                 alerts_q = alerts_q.filter(Device.merchant_id == int(mid))
         except Exception:
             pass
-    alerts = alerts_q.order_by((DeviceMaterial.remain / db.func.nullif(DeviceMaterial.threshold, 0)).asc()).limit(5).all()
+    alerts = alerts_q.order_by((DeviceBin.remaining / db.func.nullif(DeviceBin.capacity, 1)).asc()).limit(5).all()
     alert_list = []
-    for dm, dev, mc in alerts:
+    for bin, dev, mc in alerts:
         alert_list.append({
             "device_no": dev.device_no,
             "device_id": dev.id,
-            "material_id": dm.material_id,
-            "material_name": mc.name if mc else f"材料{dm.material_id}",
-            "unit": (mc.unit if mc else ""),
-            "remain": float(dm.remain),
-            "capacity": float(getattr(dm, 'capacity', 0.0)),
-            "threshold": float(dm.threshold),
-            "percent": round((dm.remain / dm.threshold) * 100, 1) if dm.threshold else 0,
-            "stock_percent": round((dm.remain / dm.capacity) * 100, 1) if getattr(dm, 'capacity', 0) else None,
-            "severity": "critical" if dm.remain <= 0 else "warning",
+            "bin_index": bin.bin_index,
+            "material_id": bin.material_id,
+            "material_name": mc.name if mc else f"料盒{bin.bin_index}",
+            "unit": (bin.unit or mc.unit if mc else ""),
+            "remain": float(bin.remaining or 0),
+            "capacity": float(bin.capacity or 0),
+            "threshold": float(bin.capacity * 0.1) if bin.capacity else 0,  # 10% 作为阈值
+            "percent": round((bin.remaining / bin.capacity) * 100, 1) if bin.capacity and bin.capacity > 0 else 0,
+            "stock_percent": round((bin.remaining / bin.capacity) * 100, 1) if bin.capacity and bin.capacity > 0 else None,
+            "severity": "critical" if (bin.remaining or 0) <= 0 else "warning",
         })
 
-    # 即将告警 Top5（阈值>0 且 remain 介于 [threshold, 1.2*threshold]）
-    near_factor = 1.2
+    # 即将告警 Top5（容量在10%-20%之间）
+    near_factor = 0.2  # 20%
     near_q = (
-        db.session.query(DeviceMaterial, Device, MaterialCatalog)
-        .join(Device, Device.id == DeviceMaterial.device_id)
-        .outerjoin(MaterialCatalog, MaterialCatalog.id == DeviceMaterial.material_id)
-        .filter(DeviceMaterial.threshold > 0)
-        .filter(DeviceMaterial.remain >= DeviceMaterial.threshold)
-        .filter(DeviceMaterial.remain <= DeviceMaterial.threshold * near_factor)
+        db.session.query(DeviceBin, Device, MaterialCatalog)
+        .join(Device, Device.id == DeviceBin.device_id)
+        .outerjoin(MaterialCatalog, MaterialCatalog.id == DeviceBin.material_id)
+        .filter(DeviceBin.capacity.isnot(None))
+        .filter(DeviceBin.remaining.isnot(None))
+        .filter(DeviceBin.capacity > 0)
+        .filter(DeviceBin.remaining / DeviceBin.capacity >= 0.1)  # 大于等于10%
+        .filter(DeviceBin.remaining / DeviceBin.capacity <= near_factor)  # 小于等于20%
     )
     if merchant_id:
         try:
@@ -183,25 +188,26 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
                 near_q = near_q.filter(Device.merchant_id == int(mid))
         except Exception:
             pass
-    near_rows = near_q.order_by((DeviceMaterial.remain / db.func.nullif(DeviceMaterial.threshold, 1)).asc()).limit(5).all()
+    near_rows = near_q.order_by((DeviceBin.remaining / db.func.nullif(DeviceBin.capacity, 1)).asc()).limit(5).all()
     near_list = []
-    for dm, dev, mc in near_rows:
+    for bin, dev, mc in near_rows:
         near_list.append({
             "device_no": dev.device_no,
             "device_id": dev.id,
-            "material_id": dm.material_id,
-            "material_name": mc.name if mc else f"材料{dm.material_id}",
-            "unit": (mc.unit if mc else ""),
-            "remain": float(dm.remain),
-            "capacity": float(getattr(dm, 'capacity', 0.0)),
-            "threshold": float(dm.threshold),
-            "percent": round((dm.remain / dm.threshold) * 100, 1) if dm.threshold else 0,
-            "stock_percent": round((dm.remain / dm.capacity) * 100, 1) if getattr(dm, 'capacity', 0) else None,
+            "bin_index": bin.bin_index,
+            "material_id": bin.material_id,
+            "material_name": mc.name if mc else f"料盒{bin.bin_index}",
+            "unit": (bin.unit or mc.unit if mc else ""),
+            "remain": float(bin.remaining or 0),
+            "capacity": float(bin.capacity or 0),
+            "threshold": float(bin.capacity * 0.1) if bin.capacity else 0,
+            "percent": round((bin.remaining / bin.capacity) * 100, 1) if bin.capacity and bin.capacity > 0 else 0,
+            "stock_percent": round((bin.remaining / bin.capacity) * 100, 1) if bin.capacity and bin.capacity > 0 else None,
             "severity": "near",
         })
 
-    # 告警统计计数
-    base_m_q = db.session.query(DeviceMaterial).join(Device, Device.id == DeviceMaterial.device_id)
+    # 告警统计计数 - 基于 DeviceBin
+    base_m_q = db.session.query(DeviceBin).join(Device, Device.id == DeviceBin.device_id).filter(DeviceBin.capacity.isnot(None), DeviceBin.remaining.isnot(None), DeviceBin.capacity > 0)
     if merchant_id:
         try:
             base_m_q = base_m_q.filter(Device.merchant_id == int(merchant_id))
@@ -215,9 +221,9 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
                 base_m_q = base_m_q.filter(Device.merchant_id == int(mid))
         except Exception:
             pass
-    critical_count = base_m_q.filter(DeviceMaterial.remain <= 0).count()
-    warning_count = base_m_q.filter(DeviceMaterial.remain > 0, DeviceMaterial.remain < DeviceMaterial.threshold).count()
-    near_count = base_m_q.filter(DeviceMaterial.threshold > 0, DeviceMaterial.remain >= DeviceMaterial.threshold, DeviceMaterial.remain <= DeviceMaterial.threshold * near_factor).count()
+    critical_count = base_m_q.filter(DeviceBin.remaining <= 0).count()
+    warning_count = base_m_q.filter(DeviceBin.remaining > 0, DeviceBin.remaining / DeviceBin.capacity < 0.1).count()
+    near_count = base_m_q.filter(DeviceBin.remaining / DeviceBin.capacity >= 0.1, DeviceBin.remaining / DeviceBin.capacity <= 0.2).count()
 
     # KPI 计算（以最后一天为“今日”）
     sales_today = sales_series[-1] if sales_series else 0

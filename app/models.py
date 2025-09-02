@@ -131,6 +131,9 @@ class Material(db.Model, TimestampMixin):
 
 
 class DeviceMaterial(db.Model, TimestampMixin):
+    """DEPRECATED: 旧版物料模型，已被 DeviceBin + MaterialCatalog 取代。
+    保留此模型仅为了向后兼容和数据库迁移，新代码请使用 DeviceBin。
+    """
     __tablename__ = "device_materials"
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)

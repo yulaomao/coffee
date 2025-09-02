@@ -8,19 +8,40 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Any
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from ..extensions import db
-from ..models import Device, Order, RemoteCommand, CommandResult, Merchant, DeviceMaterial
+from ..models import Device, Order, RemoteCommand, CommandResult, Merchant, DeviceMaterial, User
 from ..utils.security import merchant_scope_filter
 from ..tasks.queue import Task, submit_task
 from ..models import CustomFieldConfig
 
 bp = Blueprint("devices", __name__)
+
+
+def _current_claims():
+    """优先使用 JWT 身份；若无，则回退到会话用户。
+
+    返回形如 {id, role, merchant_id} 的 dict；若均不存在，返回 None。
+    """
+    try:
+        claims = get_jwt_identity()
+    except Exception:
+        claims = None
+    if claims:
+        return claims
+    uid = session.get("user_id")
+    if uid:
+        u = User.query.get(uid)
+        if u:
+            return {"id": u.id, "role": u.role, "merchant_id": u.merchant_id}
+    return None
 @bp.route("/api/devices/<string:device_no>", methods=["PATCH"])
-@jwt_required()
+@jwt_required(optional=True)
 def update_device(device_no: str):
-    claims = get_jwt_identity()
+    claims = _current_claims()
+    if not claims:
+        return jsonify({"msg": "unauthorized"}), 401
     device = merchant_scope_filter(Device.query.filter_by(device_no=device_no), claims).first_or_404()
     data = request.get_json(force=True) or {}
     # 可编辑字段
@@ -65,9 +86,11 @@ def custom_field_config():
 
 
 @bp.route("/api/devices")
-@jwt_required()
+@jwt_required(optional=True)
 def list_devices():
-    claims = get_jwt_identity()
+    claims = _current_claims()
+    if not claims:
+        return jsonify({"msg": "unauthorized"}), 401
     q = Device.query.join(Merchant, Merchant.id == Device.merchant_id)
     q = merchant_scope_filter(q, claims)
     # 过滤
@@ -101,11 +124,14 @@ def list_devices():
             ])
         return csv_response(["device_no","model","status","last_seen","address","scene","customer_code"], rows, filename="devices.csv")
 
-    # today sales per device
-    start_today = datetime.utcnow().date()
+    # 今日销量（仅统计已支付）
+    start_today_dt = datetime.combine(datetime.utcnow().date(), datetime.min.time())
     sales_map = {
         r[0]: r[1]
-        for r in db.session.query(Order.device_id, db.func.count(Order.id)).filter(Order.created_at >= start_today).group_by(Order.device_id).all()
+        for r in db.session.query(Order.device_id, db.func.count(Order.id))
+            .filter(Order.created_at >= start_today_dt, Order.pay_status == "paid")
+            .group_by(Order.device_id)
+            .all()
     }
     result_items = []
     for d in items:
@@ -127,9 +153,11 @@ def list_devices():
 
 
 @bp.route("/api/devices/<string:device_no>")
-@jwt_required()
+@jwt_required(optional=True)
 def device_detail(device_no: str):
-    claims = get_jwt_identity()
+    claims = _current_claims()
+    if not claims:
+        return jsonify({"msg": "unauthorized"}), 401
     q = Device.query.filter_by(device_no=device_no)
     q = merchant_scope_filter(q, claims)
     device = q.first_or_404()
@@ -153,18 +181,36 @@ def device_detail(device_no: str):
             "custom_fields": device.custom_fields or {},
         },
         "materials": [{"material_id": m.material_id, "remain": float(m.remain), "capacity": float(getattr(m,'capacity',0)), "threshold": float(m.threshold)} for m in materials],
-        "recent_orders": [{"id": o.id, "price": o.price, "status": o.status, "created_at": o.created_at.isoformat()} for o in recent_orders],
+        "recent_orders": [
+            {
+                "id": o.id,
+                "order_no": o.order_no,
+                "product_name": o.product_name,
+                "qty": int(getattr(o, "qty", 1) or 1),
+                "total_amount": float(o.total_amount or 0),
+                "pay_status": o.pay_status,
+                "created_at": o.created_at.isoformat(),
+            }
+            for o in recent_orders
+        ],
         "faults": [],
         "command_history": [{"command_id": c.command_id, "type": c.command_type, "status": c.status, "result_at": c.result_at.isoformat() if getattr(c,'result_at',None) else None} for c in cmds]
     })
 
 
 @bp.route("/api/devices/commands", methods=["POST"])
-@jwt_required()
+@jwt_required(optional=True)
 def batch_commands():
-    claims = get_jwt_identity()
+    claims = _current_claims()
+    if not claims:
+        return jsonify({"msg": "unauthorized"}), 401
     data: dict[str, Any] = request.get_json(force=True)
     device_nos = data.get("device_nos") or []
+    # 兼容传入 device_ids
+    device_ids = data.get("device_ids") or []
+    if device_ids and not device_nos:
+        found = Device.query.filter(Device.id.in_(device_ids)).all()
+        device_nos = [d.device_no for d in found]
     command_type = data.get("command_type")
     payload = data.get("payload", {})
     if not device_nos or not command_type:
@@ -222,10 +268,12 @@ def command_result(device_no: str):
 
 
 @bp.route("/api/devices/export")
-@jwt_required()
+@jwt_required(optional=True)
 def export_devices():
     # 复用 list_devices 过滤逻辑，但导出全量匹配结果
-    claims = get_jwt_identity()
+    claims = _current_claims()
+    if not claims:
+        return jsonify({"msg": "unauthorized"}), 401
     q = Device.query
     q = merchant_scope_filter(q, claims)
     search = request.args.get("search")

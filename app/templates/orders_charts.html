@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3 class="mb-3"><i class="bi bi-graph-up"></i> 订单分析</h3>
+<div class="row g-3">
+  <div class="col-md-6"><div class="card"><div class="card-header">销售曲线</div><div class="card-body"><canvas id="chartLine"></canvas></div></div></div>
+  <div class="col-md-6"><div class="card"><div class="card-header">支付占比</div><div class="card-body"><canvas id="chartPie"></canvas></div></div></div>
+  <div class="col-md-6"><div class="card"><div class="card-header">产品排名</div><div class="card-body"><canvas id="chartRank"></canvas></div></div></div>
+  <div class="col-md-6"><div class="card"><div class="card-header">组合分析</div><div class="card-body"><pre id="combo" class="mb-0 small"></pre></div></div></div>
+</div>
+<script>
+  let line,pie,rank;
+  async function load(){
+    const s = new URLSearchParams({group_by:'day',metric:'amount'});
+    const a = await (await fetch('/api/orders/statistics?' + s.toString())).json();
+    const l = document.getElementById('chartLine');
+    if(line) line.destroy();
+    line = new Chart(l, {type:'line', data:{labels:a.map(i=>i.k), datasets:[{label:'金额', data:a.map(i=>i.v), borderColor:'#6f4e37'}]}, options:{responsive:true}});
+
+    const r = await (await fetch('/api/orders/rank?by=product&metric=amount&limit=10')).json();
+    const rk = document.getElementById('chartRank');
+    if(rank) rank.destroy();
+    rank = new Chart(rk, {type:'bar', data:{labels:r.map(i=>i.k), datasets:[{label:'金额', data:r.map(i=>i.v), backgroundColor:'rgba(212,163,115,.7)'}]}, options:{responsive:true}});
+
+    // 支付占比用组合分析聚合
+    const ca = await (await fetch('/api/orders/combo_analysis?group_by=pay_method')).json();
+    const pieData = {};
+    ca.forEach(i=>{ const key = i.g0 || 'unknown'; pieData[key] = (pieData[key]||0) + i.amount; });
+    const p = document.getElementById('chartPie');
+    if(pie) pie.destroy();
+    pie = new Chart(p, {type:'pie', data:{labels:Object.keys(pieData), datasets:[{data:Object.values(pieData)}]}});
+
+    const combo = await (await fetch('/api/orders/combo_analysis?group_by=product,pay_method')).json();
+    document.getElementById('combo').textContent = JSON.stringify(combo, null, 2);
+  }
+  load();
+</script>
+{% endblock %}

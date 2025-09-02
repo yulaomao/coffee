@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlalchemy import Index, UniqueConstraint, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from sqlalchemy.types import JSON
 from .extensions import db
 
@@ -96,15 +96,23 @@ class DeviceStatusLog(db.Model, TimestampMixin):
 class Order(db.Model, TimestampMixin):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
-    order_no: Mapped[Optional[str]] = mapped_column(nullable=True, index=True)
+    order_no: Mapped[Optional[str]] = mapped_column(nullable=True, unique=True, index=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
     merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
     product_id: Mapped[Optional[int]] = mapped_column(ForeignKey("product_catalog.id"), nullable=True)
-    price: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    product_name: Mapped[Optional[str]] = mapped_column(nullable=True)
+    qty: Mapped[int] = mapped_column(nullable=False, default=1)
+    unit_price = mapped_column(db.Numeric(10, 2), nullable=False, default=0)
+    total_amount = mapped_column(db.Numeric(12, 2), nullable=False, default=0)
+    # 兼容旧字段：price 等同于 total_amount
+    price = synonym("total_amount")
     pay_method: Mapped[str] = mapped_column(nullable=False, default="cash")
-    status: Mapped[str] = mapped_column(nullable=False, default="paid", index=True)
+    pay_status: Mapped[str] = mapped_column(nullable=False, default="paid", index=True)  # paid/refund_pending/refunded/failed
+    status: Mapped[str] = mapped_column(nullable=False, default="paid", index=True)  # 兼容旧字段
     is_exception: Mapped[bool] = mapped_column(nullable=False, default=False)
     raw_payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    refund_info: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
 
     device = relationship("Device", back_populates="orders")
 

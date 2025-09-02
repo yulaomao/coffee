@@ -77,6 +77,24 @@
   </div>
 </div>
 
+<!-- 单设备命令弹窗 -->
+<div class="modal" tabindex="-1" id="singleCmdModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">设备命令</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2">设备编号：<code id="singleCmdDevice"></code></div>
+        <label class="form-label">命令类型</label>
+        <select id="singleCmdType" class="form-select">
+          <option value="reboot">重启</option>
+          <option value="open_door">开门</option>
+        </select>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button class="btn btn-primary" id="sendSingleCmd">下发</button></div>
+    </div>
+  </div>
+</div>
+
 <script>
   let dt; let selected = new Set(); let markers = []; let leafletMap;
   const $ = (s)=>document.querySelector(s);
@@ -138,14 +156,7 @@
         inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); }});
       });
     });
-    // 单设备命令
-    document.querySelectorAll('.single-cmd').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const dno = btn.dataset.no; const type = prompt('命令类型 (reboot/open_door):','reboot')||'reboot';
-        const resp = await fetch('/api/devices/commands',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({device_nos:[dno], command_type:type, payload:{}})});
-        alert(await resp.text());
-      });
-    })
+  // 单设备命令交由委托事件处理（见下方），这里不再逐个绑定
   }
 
   function renderMap(items){
@@ -180,6 +191,27 @@
     alert(await resp.text());
     bootstrap.Modal.getInstance(document.getElementById('cmdModal')).hide();
   };
+
+  // 委托事件：行内“命令”按钮 -> 打开单设备命令弹窗
+  document.querySelector('#tbl').addEventListener('click', (e)=>{
+    const btn = e.target.closest('.single-cmd');
+    if(btn){
+      const dno = btn.dataset.no;
+      const el = document.getElementById('singleCmdDevice');
+      el.textContent = dno;
+      el.dataset.no = dno;
+      new bootstrap.Modal(document.getElementById('singleCmdModal')).show();
+    }
+  });
+
+  // 单设备命令发送
+  document.getElementById('sendSingleCmd').addEventListener('click', async ()=>{
+    const dno = document.getElementById('singleCmdDevice').dataset.no;
+    const type = document.getElementById('singleCmdType').value;
+    const resp = await fetch('/api/devices/commands', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({device_nos: [dno], command_type: type, payload:{}})});
+    alert(await resp.text());
+    bootstrap.Modal.getInstance(document.getElementById('singleCmdModal')).hide();
+  });
 
   // 列选择
   document.getElementById('chooseCols').onclick = ()=>{

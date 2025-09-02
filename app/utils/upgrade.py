@@ -45,7 +45,19 @@ def ensure_sqlite_schema(engine: Engine) -> None:
             ("capacity", "capacity REAL DEFAULT 100"),
         ],
         "orders": [
+            # 新增订单相关字段（尽量不加 NOT NULL 约束，避免旧表已有数据时失败）
             ("order_no", "order_no TEXT"),
+            ("product_name", "product_name TEXT"),
+            ("qty", "qty INTEGER DEFAULT 1"),
+            ("unit_price", "unit_price NUMERIC DEFAULT 0"),
+            ("total_amount", "total_amount NUMERIC DEFAULT 0"),
+            ("pay_method", "pay_method TEXT DEFAULT 'cash'"),
+            ("pay_status", "pay_status TEXT DEFAULT 'paid'"),
+            ("status", "status TEXT DEFAULT 'paid'"),
+            ("is_exception", "is_exception INTEGER DEFAULT 0"),
+            ("raw_payload", "raw_payload TEXT"),
+            ("refund_info", "refund_info TEXT"),
+            ("created_by", "created_by INTEGER"),
         ],
         "remote_commands": [
             ("result_payload", "result_payload TEXT"),

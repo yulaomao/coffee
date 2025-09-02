@@ -5,10 +5,18 @@
 <h5>最近订单</h5>
 {% if recent_orders %}
 <table class="table table-sm">
-  <thead><tr><th>ID</th><th>金额</th><th>状态</th><th>时间</th></tr></thead>
+  <thead><tr><th>ID</th><th>订单号</th><th>商品</th><th>数量</th><th>总金额</th><th>支付状态</th><th>时间</th></tr></thead>
   <tbody>
     {% for o in recent_orders %}
-    <tr><td>{{ o.id }}</td><td>{{ o.price }}</td><td>{{ o.status }}</td><td>{{ o.created_at }}</td></tr>
+    <tr>
+      <td>{{ o.id }}</td>
+      <td>{{ o.order_no or '-' }}</td>
+      <td>{{ o.product_name or '-' }}</td>
+      <td>{{ o.qty or 1 }}</td>
+      <td>{{ o.total_amount or 0 }}</td>
+      <td>{{ o.pay_status }}</td>
+      <td>{{ o.created_at }}</td>
+    </tr>
     {% endfor %}
   </tbody>
 </table>
@@ -40,7 +48,7 @@
     const command_type = form.get('command_type');
     const resp = await fetch('/api/devices/commands', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ device_ids:[deviceId], command_type: command_type, payload:{} })
+  body: JSON.stringify({ device_nos:[deviceNo], command_type: command_type, payload:{} })
     });
     document.getElementById('cmdHint').textContent = '已下发: ' + (await resp.text());
   });

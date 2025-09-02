@@ -28,8 +28,8 @@ def dashboard():
     # 基础数字用于首屏占位，实际图表/卡片将通过 API 动态刷新
     device_count = Device.query.count()
     fault_count = Fault.query.count()
-    order_today = Order.query.filter(Order.created_at >= datetime.utcnow().date()).count()
-    revenue_today = db.session.query(db.func.sum(Order.price)).filter(Order.created_at >= datetime.utcnow().date()).scalar() or 0
+    order_today = Order.query.filter(Order.created_at >= datetime.utcnow().date(), Order.pay_status == "paid").count()
+    revenue_today = db.session.query(db.func.sum(Order.total_amount)).filter(Order.created_at >= datetime.utcnow().date(), Order.pay_status == "paid").scalar() or 0
     merchants = Merchant.query.order_by(Merchant.id.asc()).all()
     return render_template("dashboard.html", device_count=device_count, fault_count=fault_count, order_today=order_today, revenue_today=revenue_today, merchants=merchants)
 
@@ -96,9 +96,9 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
     for d in days:
         start_dt = datetime.combine(d, datetime.min.time())
         end_dt = start_dt + timedelta(days=1)
-        qd = q_order.filter(Order.created_at >= start_dt, Order.created_at < end_dt)
+        qd = q_order.filter(Order.created_at >= start_dt, Order.created_at < end_dt, Order.pay_status == "paid")
         sales = qd.count()
-        revenue = qd.with_entities(db.func.coalesce(db.func.sum(Order.price), 0.0)).scalar() or 0.0
+        revenue = qd.with_entities(db.func.coalesce(db.func.sum(Order.total_amount), 0.0)).scalar() or 0.0
         # 活跃设备：当天产生过订单的设备数（在 q_order 作用域内）
         active = qd.with_entities(db.func.count(db.func.distinct(Order.device_id))).scalar() or 0
         # 在线率：用活跃设备/总设备 近似（示例数据）
@@ -242,11 +242,25 @@ def device_detail_page(device_id: int):
     recent_orders = Order.query.filter_by(device_id=device.id).order_by(Order.created_at.desc()).limit(10).all()
     return render_template("device_detail.html", device=device, recent_orders=recent_orders)
 
+# 通过设备编号访问详情，便于前端链接（重用上面的模板）
+@bp.route("/devices/<string:device_no>")
+def device_detail_by_no(device_no: str):
+    device = Device.query.filter_by(device_no=device_no).first_or_404()
+    recent_orders = Order.query.filter_by(device_id=device.id).order_by(Order.created_at.desc()).limit(10).all()
+    return render_template("device_detail.html", device=device, recent_orders=recent_orders)
+
 
 @bp.route("/orders")
 def orders_page():
-    orders = Order.query.order_by(Order.created_at.desc()).limit(100).all()
-    return render_template("orders.html", orders=orders)
+    return render_template("orders_list.html")
+
+@bp.route("/orders/exceptions")
+def orders_exceptions_page():
+    return render_template("orders_exceptions.html")
+
+@bp.route("/orders/charts")
+def orders_charts_page():
+    return render_template("orders_charts.html")
 
 
 @bp.route("/upgrades")

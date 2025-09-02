@@ -67,54 +67,90 @@ def device_materials(device_id: int):
 
 
 def _materials_base_query(claims):
+    """构建物料查询基础，统一使用 DeviceBin + MaterialCatalog 模式"""
     q = db.session.query(
         Device.device_no.label('device_no'),
         Device.model.label('device_name'),
-        DeviceMaterial.material_id.label('bin_id'),
+        DeviceBin.bin_index.label('bin_id'),
         MaterialCatalog.name.label('material_name'),
         MaterialCatalog.category.label('material_type'),
-        DeviceMaterial.remain.label('remain'),
-        DeviceMaterial.capacity.label('capacity'),
-        DeviceMaterial.updated_at.label('updated_at'),
-        MaterialCatalog.unit.label('unit'),
-    ).select_from(DeviceMaterial)
-    q = q.join(Device, Device.id == DeviceMaterial.device_id)
-    q = q.outerjoin(MaterialCatalog, MaterialCatalog.id == DeviceMaterial.material_id)
-    # 使用设备的 merchant_id 进行过滤，superadmin 不限制
-    try:
-        role = claims.get('role') if claims else None
-        mid = claims.get('merchant_id') if claims else None
-        if role != 'superadmin' and mid is not None:
-            q = q.filter(Device.merchant_id == int(mid))
-    except Exception:
-        pass
+        DeviceBin.remaining.label('remain'),
+        DeviceBin.capacity.label('capacity'),
+        DeviceBin.last_sync_at.label('updated_at'),
+        DeviceBin.unit.label('unit'),
+    ).select_from(DeviceBin)
+    q = q.join(Device, Device.id == DeviceBin.device_id)
+    q = q.outerjoin(MaterialCatalog, MaterialCatalog.id == DeviceBin.material_id)
+    
+    # 权限过滤：superadmin 不限制，其他角色按 merchant_id 过滤
+    if claims:
+        role = claims.get('role')
+        merchant_id = claims.get('merchant_id')
+        if role != 'superadmin' and merchant_id:
+            try:
+                q = q.filter(Device.merchant_id == int(merchant_id))
+            except (ValueError, TypeError):
+                # 无效 merchant_id，返回空结果
+                q = q.filter(False)
     return q
 
 
 def _current_claims():
-    """优先 JWT，若无则会话回退，返回 {id, role, merchant_id} 或 None。"""
+    """获取当前用户声明，优先 JWT，回退到会话，返回 {id, role, merchant_id} 或 None"""
     try:
         claims = get_jwt_identity()
+        if claims:
+            return claims
     except Exception:
-        claims = None
-    if claims:
-        return claims
-    # session 回退
+        pass
+    
+    # 会话回退
     from flask import session
-    uid = session.get('user_id')
-    if uid:
-        u = User.query.get(uid)
-        if u:
-            return {"id": u.id, "role": u.role, "merchant_id": u.merchant_id}
+    user_id = session.get('user_id')
+    if user_id:
+        try:
+            user = User.query.get(int(user_id))
+            if user:
+                return {
+                    "id": user.id, 
+                    "role": user.role, 
+                    "merchant_id": user.merchant_id
+                }
+        except Exception:
+            pass
+    
     return None
 
 
-def _require_write(claims) -> Optional[tuple[str,int]]:
+def _require_write(claims) -> Optional[tuple[str, int]]:
+    """检查写操作权限"""
     if not claims:
-        return ("unauthorized", 401)
+        return ("未授权：需要登录", 401)
+    
     role = claims.get('role')
     if role not in {"superadmin", "merchant_admin", "ops_engineer"}:
-        return ("forbidden", 403)
+        return ("权限不足：需要管理员权限", 403)
+    
+    return None
+
+
+def _validate_material_data(data: dict) -> Optional[str]:
+    """验证物料数据的完整性和合法性"""
+    if not data.get('name', '').strip():
+        return "物料名称不能为空"
+    
+    unit = data.get('unit', '').strip()
+    if unit and unit not in ['g', 'ml', 'pcs', '个', '包', 'kg', 'l']:
+        return "单位必须是: g, ml, pcs, 个, 包, kg, l 之一"
+    
+    try:
+        if data.get('default_capacity') is not None:
+            capacity = float(data['default_capacity'])
+            if capacity <= 0:
+                return "默认容量必须大于0"
+    except (ValueError, TypeError):
+        return "默认容量必须是有效数字"
+    
     return None
 
 
@@ -124,81 +160,228 @@ def _require_write(claims) -> Optional[tuple[str,int]]:
 @jwt_required(optional=True)
 def material_catalog_list_create():
     claims = _current_claims()
+    
     if request.method == "GET":
-        q = MaterialCatalog.query
-        # 筛选
-        kw = request.args.get('name') or request.args.get('q')
-        category = request.args.get('category')
-        code = request.args.get('code')
-        active = request.args.get('active')
-        if kw:
-            like = f"%{kw}%"; q = q.filter((MaterialCatalog.name.like(like)) | (MaterialCatalog.code.like(like)))
+        q = MaterialCatalog.query.filter(MaterialCatalog.is_active == True)  # 只显示活跃物料
+        
+        # 筛选参数
+        keyword = request.args.get('name') or request.args.get('q', '').strip()
+        category = request.args.get('category', '').strip()
+        code = request.args.get('code', '').strip()
+        
+        if keyword:
+            like_pattern = f"%{keyword}%"
+            q = q.filter(
+                (MaterialCatalog.name.like(like_pattern)) | 
+                (MaterialCatalog.code.like(like_pattern))
+            )
         if category:
             q = q.filter(MaterialCatalog.category == category)
         if code:
             q = q.filter(MaterialCatalog.code == code)
-        if active is not None:
-            if active.lower() in ("0","false","no"):
-                q = q.filter(MaterialCatalog.is_active == False)  # noqa: E712
-            elif active.lower() in ("1","true","yes"):
-                q = q.filter(MaterialCatalog.is_active == True)  # noqa: E712
-        page = int(request.args.get('page', 1)); per_page = min(int(request.args.get('per_page', 20)), 200)
+        
+        # 分页
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = min(200, max(1, int(request.args.get('per_page', 20))))
         total = q.count()
-        rows = q.order_by(MaterialCatalog.id.asc()).limit(per_page).offset((page-1)*per_page).all()
-        return jsonify({"ok": True, "total": total, "page": page, "per_page": per_page, "items": [
-            {
-                "id": m.id, "code": m.code, "name": m.name, "category": m.category, "unit": m.unit,
-                "default_capacity": m.default_capacity, "description": m.description, "is_active": m.is_active
-            } for m in rows
-        ]})
-    # POST create
+        
+        rows = q.order_by(MaterialCatalog.created_at.desc()).limit(per_page).offset((page-1)*per_page).all()
+        
+        return jsonify({
+            "ok": True, 
+            "total": total, 
+            "page": page, 
+            "per_page": per_page, 
+            "items": [
+                {
+                    "id": m.id, 
+                    "code": m.code, 
+                    "name": m.name, 
+                    "category": m.category, 
+                    "unit": m.unit,
+                    "default_capacity": m.default_capacity, 
+                    "description": m.description, 
+                    "is_active": m.is_active
+                } for m in rows
+            ]
+        })
+    
+    # POST - 创建新物料
     err = _require_write(claims)
-    if err: return jsonify({"ok": False, "message": err[0]}), err[1]
-    data = request.get_json(force=True)
-    m = MaterialCatalog(
-        code=(data.get('code') or None),
-        name=data['name'],
-        category=data.get('category'),
-        unit=data.get('unit') or 'g',
-        default_capacity=data.get('default_capacity'),
-        description=data.get('description'),
-        created_by=claims.get('id') if claims else None,
-        is_active=True,
-    )
-    db.session.add(m)
-    db.session.commit()
-    db.session.add(OperationLog(user_id=claims.get('id') if claims else None, action='material_create', target_type='material', target_id=m.id, ip=None, user_agent=None, raw_payload=data))
-    db.session.commit()
-    return jsonify({"ok": True, "data": {"id": m.id}})
+    if err: 
+        return jsonify({"ok": False, "message": err[0]}), err[1]
+    
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "message": "无效的JSON数据"}), 400
+    
+    # 验证数据
+    validation_error = _validate_material_data(data)
+    if validation_error:
+        return jsonify({"ok": False, "message": validation_error}), 400
+    
+    # 检查编码唯一性
+    code = (data.get('code') or '').strip() or None
+    if code and MaterialCatalog.query.filter_by(code=code).first():
+        return jsonify({"ok": False, "message": f"编码 '{code}' 已存在"}), 400
+    
+    # 检查名称唯一性
+    name = data['name'].strip()
+    if MaterialCatalog.query.filter_by(name=name).first():
+        return jsonify({"ok": False, "message": f"物料名称 '{name}' 已存在"}), 400
+    
+    try:
+        material = MaterialCatalog(
+            code=code,
+            name=name,
+            category=data.get('category', '').strip() or None,
+            unit=data.get('unit', 'g').strip(),
+            default_capacity=float(data['default_capacity']) if data.get('default_capacity') else None,
+            description=data.get('description', '').strip() or None,
+            created_by=claims.get('id') if claims else None,
+            is_active=True,
+        )
+        
+        db.session.add(material)
+        db.session.flush()  # 获取ID
+        
+        # 记录操作日志
+        log_entry = OperationLog(
+            user_id=claims.get('id') if claims else None, 
+            action='material_create', 
+            target_type='material_catalog', 
+            target_id=material.id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get('User-Agent', ''),
+            raw_payload=data
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        
+        return jsonify({
+            "ok": True, 
+            "message": "物料创建成功",
+            "data": {"id": material.id}
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "message": f"创建失败: {str(e)}"}), 500
 
 
 @bp.route("/api/material_catalog/<int:mid>", methods=["GET", "PUT", "DELETE"])
 @jwt_required(optional=True)
 def material_catalog_detail(mid: int):
     claims = _current_claims()
-    m = MaterialCatalog.query.get_or_404(mid)
+    
+    try:
+        material = MaterialCatalog.query.get_or_404(mid)
+    except Exception:
+        return jsonify({"ok": False, "message": "物料不存在"}), 404
+    
     if request.method == "GET":
-        return jsonify({"ok": True, "data": {
-            "id": m.id, "code": m.code, "name": m.name, "category": m.category, "unit": m.unit,
-            "default_capacity": m.default_capacity, "description": m.description, "is_active": m.is_active
-        }})
+        return jsonify({
+            "ok": True, 
+            "data": {
+                "id": material.id, 
+                "code": material.code, 
+                "name": material.name, 
+                "category": material.category, 
+                "unit": material.unit,
+                "default_capacity": material.default_capacity, 
+                "description": material.description, 
+                "is_active": material.is_active,
+                "created_at": material.created_at.isoformat() if material.created_at else None,
+                "updated_at": material.updated_at.isoformat() if material.updated_at else None
+            }
+        })
+    
+    # PUT/DELETE 需要写权限
     err = _require_write(claims)
-    if err: return jsonify({"ok": False, "message": err[0]}), err[1]
+    if err: 
+        return jsonify({"ok": False, "message": err[0]}), err[1]
+    
     if request.method == "PUT":
-        data = request.get_json(force=True)
-        for f in ["code","name","category","unit","default_capacity","description","is_active"]:
-            if f in data:
-                setattr(m, f, data[f])
+        try:
+            data = request.get_json(force=True) or {}
+        except Exception:
+            return jsonify({"ok": False, "message": "无效的JSON数据"}), 400
+        
+        # 验证数据
+        validation_error = _validate_material_data(data)
+        if validation_error:
+            return jsonify({"ok": False, "message": validation_error}), 400
+        
+        # 检查编码唯一性（如果更改了编码）
+        new_code = (data.get('code') or '').strip() or None
+        if new_code and new_code != material.code:
+            existing = MaterialCatalog.query.filter_by(code=new_code).first()
+            if existing:
+                return jsonify({"ok": False, "message": f"编码 '{new_code}' 已被其他物料使用"}), 400
+        
+        # 检查名称唯一性（如果更改了名称）
+        new_name = data['name'].strip()
+        if new_name != material.name:
+            existing = MaterialCatalog.query.filter_by(name=new_name).first()
+            if existing:
+                return jsonify({"ok": False, "message": f"物料名称 '{new_name}' 已被其他物料使用"}), 400
+        
+        try:
+            # 更新物料信息
+            updatable_fields = ["code", "name", "category", "unit", "default_capacity", "description", "is_active"]
+            for field in updatable_fields:
+                if field in data:
+                    if field == 'default_capacity':
+                        value = float(data[field]) if data[field] is not None else None
+                    elif field in ['code', 'category', 'description']:
+                        value = (data[field] or '').strip() or None
+                    elif field in ['name', 'unit']:
+                        value = (data[field] or '').strip()
+                    else:
+                        value = data[field]
+                    setattr(material, field, value)
+            
+            # 记录操作日志
+            log_entry = OperationLog(
+                user_id=claims.get('id') if claims else None, 
+                action='material_update', 
+                target_type='material_catalog', 
+                target_id=material.id,
+                ip=request.remote_addr,
+                user_agent=request.headers.get('User-Agent', ''),
+                raw_payload=data
+            )
+            db.session.add(log_entry)
+            db.session.commit()
+            
+            return jsonify({"ok": True, "message": "物料更新成功"})
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"ok": False, "message": f"更新失败: {str(e)}"}), 500
+    
+    # DELETE - 软删除
+    try:
+        material.is_active = False
+        
+        log_entry = OperationLog(
+            user_id=claims.get('id') if claims else None, 
+            action='material_delete', 
+            target_type='material_catalog', 
+            target_id=material.id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get('User-Agent', ''),
+            raw_payload=None
+        )
+        db.session.add(log_entry)
         db.session.commit()
-        db.session.add(OperationLog(user_id=claims.get('id') if claims else None, action='material_update', target_type='material', target_id=m.id, ip=None, user_agent=None, raw_payload=data))
-        db.session.commit()
-        return jsonify({"ok": True})
-    # DELETE -> 软删除
-    m.is_active = False
-    db.session.commit()
-    db.session.add(OperationLog(user_id=claims.get('id') if claims else None, action='material_delete', target_type='material', target_id=m.id, ip=None, user_agent=None, raw_payload=None))
-    db.session.commit()
-    return jsonify({"ok": True})
+        
+        return jsonify({"ok": True, "message": "物料已删除"})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "message": f"删除失败: {str(e)}"}), 500
 
 
 @bp.route("/api/material_catalog/import", methods=["POST"])
@@ -276,50 +459,171 @@ def material_catalog_export():
 # -------------------- 设备料盒（Device Bins） --------------------
 
 def _get_or_create_bin(device_id: int, bin_index: int) -> DeviceBin:
-    b = DeviceBin.query.filter_by(device_id=device_id, bin_index=bin_index).first()
-    if not b:
-        b = DeviceBin(device_id=device_id, bin_index=bin_index)
-        db.session.add(b)
-        db.session.flush()
-    return b
+    """获取或创建设备料盒，确保数据完整性"""
+    if bin_index < 1:
+        raise ValueError("料盒索引必须大于0")
+    
+    bin_obj = DeviceBin.query.filter_by(device_id=device_id, bin_index=bin_index).first()
+    if not bin_obj:
+        # 验证设备存在
+        device = Device.query.get(device_id)
+        if not device:
+            raise ValueError(f"设备 ID {device_id} 不存在")
+        
+        bin_obj = DeviceBin(device_id=device_id, bin_index=bin_index)
+        db.session.add(bin_obj)
+        db.session.flush()  # 获取ID但不提交
+    
+    return bin_obj
+
+
+def _validate_bin_operation(device_id: int, bin_index: int, claims: dict = None) -> Optional[tuple[str, int]]:
+    """验证料盒操作的权限和合法性"""
+    try:
+        device = Device.query.get(device_id)
+        if not device:
+            return ("设备不存在", 404)
+        
+        if bin_index < 1 or bin_index > 20:  # 假设最多20个料盒
+            return ("料盒索引必须在1-20之间", 400)
+        
+        # 权限检查
+        if claims:
+            role = claims.get('role')
+            merchant_id = claims.get('merchant_id')
+            if role != 'superadmin' and merchant_id != device.merchant_id:
+                return ("无权限操作该设备的料盒", 403)
+        
+        return None
+        
+    except Exception:
+        return ("验证失败", 500)
 
 
 @bp.route("/api/devices/<int:device_id>/bins", methods=["GET", "POST"])
 @jwt_required(optional=True)
 def device_bins(device_id: int):
     claims = _current_claims()
+    
+    # 验证设备和权限
+    validation_error = _validate_bin_operation(device_id, 1, claims)  # 使用索引1做基础验证
+    if validation_error and validation_error[1] in [403, 404]:
+        return jsonify({"ok": False, "message": validation_error[0]}), validation_error[1]
+    
     if request.method == "GET":
-        rows = db.session.query(DeviceBin, MaterialCatalog, Device).join(Device, Device.id == DeviceBin.device_id).outerjoin(MaterialCatalog, MaterialCatalog.id == DeviceBin.material_id).filter(DeviceBin.device_id == device_id).all()
-        res = []
-        for b, m, d in rows:
-            cap = b.capacity if b.capacity is not None else (m.default_capacity if m else None)
-            res.append({
-                "device_id": device_id,
-                "bin_index": b.bin_index,
-                "material": ({"id": m.id, "code": m.code, "name": m.name, "unit": m.unit} if m else None),
-                "capacity": cap,
-                "remaining": b.remaining,
-                "unit": b.unit or (m.unit if m else None),
-                "last_sync_at": (b.last_sync_at.isoformat() if b.last_sync_at else None),
-                "custom_label": b.custom_label,
-            })
-        return jsonify(res)
-    # POST: 初始化 bins
+        try:
+            # 获取设备的所有料盒，连接物料信息
+            query = db.session.query(DeviceBin, MaterialCatalog, Device).join(
+                Device, Device.id == DeviceBin.device_id
+            ).outerjoin(
+                MaterialCatalog, MaterialCatalog.id == DeviceBin.material_id
+            ).filter(DeviceBin.device_id == device_id)
+            
+            rows = query.order_by(DeviceBin.bin_index.asc()).all()
+            
+            bins = []
+            for bin_obj, material, device in rows:
+                # 计算容量：优先使用料盒自定义容量，其次物料默认容量
+                capacity = bin_obj.capacity
+                if capacity is None and material:
+                    capacity = material.default_capacity
+                
+                bin_data = {
+                    "device_id": device_id,
+                    "bin_index": bin_obj.bin_index,
+                    "material": (
+                        {
+                            "id": material.id, 
+                            "code": material.code, 
+                            "name": material.name, 
+                            "unit": material.unit,
+                            "category": material.category
+                        } if material else None
+                    ),
+                    "capacity": capacity,
+                    "remaining": bin_obj.remaining,
+                    "unit": bin_obj.unit or (material.unit if material else None),
+                    "last_sync_at": (bin_obj.last_sync_at.isoformat() if bin_obj.last_sync_at else None),
+                    "custom_label": bin_obj.custom_label,
+                    "utilization": None  # 计算使用率
+                }
+                
+                # 计算使用率
+                if capacity and bin_obj.remaining is not None:
+                    bin_data["utilization"] = round((bin_obj.remaining / capacity) * 100, 1)
+                
+                bins.append(bin_data)
+            
+            return jsonify({"ok": True, "data": bins})
+            
+        except Exception as e:
+            return jsonify({"ok": False, "message": f"获取料盒信息失败: {str(e)}"}), 500
+    
+    # POST - 初始化料盒
     err = _require_write(claims)
-    if err: return jsonify({"ok": False, "message": err[0]}), err[1]
-    data = request.get_json(force=True)
-    bins = data.get('bins') or []
-    for it in bins:
-        idx = int(it.get('bin_index'))
-        b = _get_or_create_bin(device_id, idx)
-        if it.get('capacity') is not None:
-            b.capacity = float(it.get('capacity'))
-        if it.get('custom_label') is not None:
-            b.custom_label = it.get('custom_label')
-    db.session.commit()
-    db.session.add(OperationLog(user_id=claims.get('id') if claims else None, action='device_bins_init', target_type='device', target_id=device_id, ip=None, user_agent=None, raw_payload={"bins": bins}))
-    db.session.commit()
-    return jsonify({"ok": True})
+    if err: 
+        return jsonify({"ok": False, "message": err[0]}), err[1]
+    
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"ok": False, "message": "无效的JSON数据"}), 400
+    
+    bins_config = data.get('bins', [])
+    if not bins_config or not isinstance(bins_config, list):
+        return jsonify({"ok": False, "message": "bins参数必须是非空数组"}), 400
+    
+    try:
+        created_count = 0
+        for bin_config in bins_config:
+            if not isinstance(bin_config, dict):
+                continue
+                
+            bin_index = bin_config.get('bin_index')
+            if not bin_index or bin_index < 1:
+                continue
+            
+            # 验证料盒索引
+            validation_error = _validate_bin_operation(device_id, bin_index, claims)
+            if validation_error:
+                continue
+            
+            bin_obj = _get_or_create_bin(device_id, bin_index)
+            
+            # 更新料盒配置
+            if bin_config.get('capacity') is not None:
+                try:
+                    bin_obj.capacity = float(bin_config['capacity'])
+                except (ValueError, TypeError):
+                    continue
+                    
+            if bin_config.get('custom_label') is not None:
+                bin_obj.custom_label = str(bin_config['custom_label']).strip() or None
+            
+            created_count += 1
+        
+        # 记录操作日志
+        log_entry = OperationLog(
+            user_id=claims.get('id') if claims else None, 
+            action='device_bins_init', 
+            target_type='device', 
+            target_id=device_id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get('User-Agent', ''),
+            raw_payload={"bins_count": created_count}
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        
+        return jsonify({
+            "ok": True, 
+            "message": f"成功初始化 {created_count} 个料盒",
+            "data": {"initialized": created_count}
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"ok": False, "message": f"初始化失败: {str(e)}"}), 500
 
 
 @bp.route("/api/devices/<int:device_id>/bins/<int:bin_index>/bind", methods=["PUT"])
@@ -548,39 +852,91 @@ def device_bins_bulk_bind_csv():
 @bp.route("/api/materials")
 @jwt_required(optional=True)
 def materials_list():
+    """物料余量汇总列表（使用统一的 DeviceBin + MaterialCatalog 模式）"""
     claims = _current_claims()
     if not claims:
-        return jsonify({"msg": "unauthorized"}), 401
-    q = _materials_base_query(claims)
-    # 筛选
-    device_no = request.args.get('device_id') or request.args.get('device_no')
-    mtype = request.args.get('type')
-    name = request.args.get('name')
-    if device_no:
-        q = q.filter(Device.device_no.like(f"%{device_no}%"))
-    if mtype:
-        q = q.filter((MaterialCatalog.category == mtype) | (MaterialCatalog.name == mtype))
-    if name:
-        like = f"%{name}%"; q = q.filter((MaterialCatalog.name.like(like)) | (Device.model.like(like)))
-    page = int(request.args.get('page', 1)); per_page = min(int(request.args.get('per_page', 20)), 200)
-    total = q.count()
-    rows = q.order_by(Device.device_no.asc(), DeviceMaterial.material_id.asc()).limit(per_page).offset((page-1)*per_page).all()
-    items = []
-    for r in rows:
-        cap = float(r.capacity or 0); rem = float(r.remain or 0); pct = (rem/cap*100) if cap>0 else 0
-        items.append({
-            "device_no": r.device_no,
-            "device_name": r.device_name,
-            "bin_id": r.bin_id,
-            "material_name": r.material_name or f"料盒{r.bin_id}",
-            "material_type": r.material_type or '-',
-            "remain": rem,
-            "capacity": cap,
-            "percent": round(pct, 1),
-            "unit": r.unit or 'g',
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        return jsonify({"ok": False, "message": "需要登录"}), 401
+    
+    try:
+        q = _materials_base_query(claims)
+        
+        # 筛选参数
+        device_no = request.args.get('device_id') or request.args.get('device_no')
+        material_type = request.args.get('type')
+        name_keyword = request.args.get('name')
+        
+        if device_no:
+            device_no = device_no.strip()
+            if device_no:
+                q = q.filter(Device.device_no.like(f"%{device_no}%"))
+        
+        if material_type:
+            material_type = material_type.strip()
+            if material_type:
+                q = q.filter(
+                    (MaterialCatalog.category == material_type) | 
+                    (MaterialCatalog.name.like(f"%{material_type}%"))
+                )
+        
+        if name_keyword:
+            name_keyword = name_keyword.strip()
+            if name_keyword:
+                like_pattern = f"%{name_keyword}%"
+                q = q.filter(
+                    (MaterialCatalog.name.like(like_pattern)) | 
+                    (Device.model.like(like_pattern))
+                )
+        
+        # 分页
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = min(200, max(1, int(request.args.get('per_page', 20))))
+        total = q.count()
+        
+        rows = q.order_by(
+            Device.device_no.asc(), 
+            DeviceBin.bin_index.asc()
+        ).limit(per_page).offset((page-1)*per_page).all()
+        
+        items = []
+        for row in rows:
+            # 安全地获取数值，防止None值
+            capacity = float(row.capacity or 0)
+            remaining = float(row.remain or 0)
+            percentage = round((remaining / capacity) * 100, 1) if capacity > 0 else 0
+            
+            # 判断库存状态
+            status = "正常"
+            if remaining <= 0:
+                status = "空"
+            elif percentage < 20:
+                status = "低"
+            elif percentage < 50:
+                status = "中"
+            
+            items.append({
+                "device_no": row.device_no,
+                "device_name": row.device_name or "",
+                "bin_id": row.bin_id,
+                "material_name": row.material_name or f"料盒{row.bin_id}",
+                "material_type": row.material_type or "-",
+                "remain": remaining,
+                "capacity": capacity,
+                "percent": percentage,
+                "unit": row.unit or "g",
+                "status": status,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            })
+        
+        return jsonify({
+            "ok": True,
+            "total": total, 
+            "page": page, 
+            "per_page": per_page, 
+            "items": items
         })
-    return jsonify({"total": total, "page": page, "per_page": per_page, "items": items})
+        
+    except Exception as e:
+        return jsonify({"ok": False, "message": f"查询失败: {str(e)}"}), 500
 
 
 @bp.route("/api/materials/export")

@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h3 class="m-0">配方下发进度</h3>
+  <a class="btn btn-outline-secondary" href="/recipes/packages">返回包列表</a>
+  
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div>批次 ID：<code id="bid">{{ batch_id }}</code></div>
+    <div>策略：<span id="strategy"></span></div>
+    <div>设备数：<span id="cnt"></span></div>
+    <div>摘要：<span id="sum"></span></div>
+  </div>
+</div>
+
+<table id="tbl" class="table table-striped table-hover">
+  <thead><tr><th>设备ID</th><th>状态</th><th>命令ID</th><th>回执时间</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<script>
+  let dt, timer;
+  async function poll(){
+    const j = await (await fetch('/api/recipes/dispatches/{{ batch_id }}')).json();
+    document.getElementById('strategy').textContent = j.batch.strategy;
+    document.getElementById('cnt').textContent = j.batch.devices.length;
+    document.getElementById('sum').textContent = JSON.stringify(j.batch.status_summary||{});
+    const tb = document.querySelector('#tbl tbody'); tb.innerHTML='';
+    (j.logs||[]).forEach(l=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${l.device_id}</td><td>${l.status}</td><td>${l.command_id}</td><td>${l.result_at? l.result_at.replace('T',' ').slice(0,19): ''}</td>`;
+      tb.appendChild(tr);
+    });
+    if(dt) dt.destroy();
+    dt = new DataTable('#tbl', { pagingType:'simple_numbers', dom:'t<"d-flex justify-content-between align-items-center mt-2"ip>', language:{paginate:{previous:'上一页', next:'下一页'}, info:'第 _PAGE_ / 共 _PAGES_ 页（共 _TOTAL_ 条）', infoEmpty:'无记录', zeroRecords:'无匹配记录'}});
+  }
+  poll();
+  timer = setInterval(poll, 3000);
+  window.addEventListener('beforeunload', ()=> clearInterval(timer));
+</script>
+{% endblock %}

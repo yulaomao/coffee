@@ -34,7 +34,7 @@ def ensure_sqlite_schema(engine: Engine) -> None:
 
     # 需要补齐的列定义：{table: [(name, definition), ...]}
     targets: Dict[str, List[tuple[str, str]]] = {
-        "devices": [
+            "devices": [
             ("address_detail", "address_detail TEXT"),
             ("summary_address", "summary_address TEXT"),
             ("scene", "scene TEXT"),
@@ -43,6 +43,9 @@ def ensure_sqlite_schema(engine: Engine) -> None:
         ],
         "device_materials": [
             ("capacity", "capacity REAL DEFAULT 100"),
+        ],
+        "material_catalog": [
+            ("category", "category TEXT"),
         ],
         "orders": [
             # 新增订单相关字段（尽量不加 NOT NULL 约束，避免旧表已有数据时失败）
@@ -66,6 +69,12 @@ def ensure_sqlite_schema(engine: Engine) -> None:
         ],
     }
 
+    # 轻量建表（若不存在）
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS recipes (id INTEGER PRIMARY KEY, name TEXT NOT NULL, version TEXT, description TEXT, author_id INTEGER, status TEXT DEFAULT 'draft', applicable_models TEXT, bin_mapping_schema TEXT, steps TEXT, metadata TEXT, created_at TEXT, updated_at TEXT)")
+        conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS recipe_packages (id INTEGER PRIMARY KEY, recipe_id INTEGER, package_name TEXT NOT NULL, package_path TEXT NOT NULL, md5 TEXT NOT NULL, size_bytes INTEGER NOT NULL DEFAULT 0, uploaded_by INTEGER, created_at TEXT)")
+        conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS recipe_dispatch_batches (id TEXT PRIMARY KEY, recipe_package_id INTEGER, initiated_by INTEGER, devices TEXT NOT NULL, strategy TEXT NOT NULL, scheduled_time TEXT, status_summary TEXT, created_at TEXT)")
+        conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS recipe_dispatch_logs (id INTEGER PRIMARY KEY, batch_id TEXT NOT NULL, device_id INTEGER NOT NULL, command_id TEXT NOT NULL, status TEXT NOT NULL, result_payload TEXT, result_at TEXT, created_at TEXT)")
     for table, defs in targets.items():
         try:
             existing = set(_table_columns(engine, table))

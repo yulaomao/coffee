@@ -12,4 +12,17 @@
     {% endfor %}
   </tbody>
 </table>
+<script>
+  new DataTable('table', {
+    pageLength: 20,
+    pagingType: 'simple_numbers',
+    dom: 't<"d-flex justify-content-between align-items-center mt-2"ip>',
+    language: {
+      paginate: { previous: '上一页', next: '下一页' },
+      info: '第 _PAGE_ / 共 _PAGES_ 页（共 _TOTAL_ 条）',
+      infoEmpty: '无记录',
+      zeroRecords: '无匹配记录'
+    }
+  });
+</script>
 {% endblock %}

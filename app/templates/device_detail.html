@@ -1,61 +1,292 @@
 {% extends 'base.html' %}
 {% block content %}
-<h3>设备详情：{{ device.device_no }}</h3>
-<div class="mb-3">状态：{{ device.status }} | 固件：{{ device.firmware_version or '-' }}</div>
-<h5>最近订单</h5>
-{% if recent_orders %}
-<table class="table table-sm">
-  <thead><tr><th>ID</th><th>订单号</th><th>商品</th><th>数量</th><th>总金额</th><th>支付状态</th><th>时间</th></tr></thead>
-  <tbody>
-    {% for o in recent_orders %}
-    <tr>
-      <td>{{ o.id }}</td>
-      <td>{{ o.order_no or '-' }}</td>
-      <td>{{ o.product_name or '-' }}</td>
-      <td>{{ o.qty or 1 }}</td>
-      <td>{{ o.total_amount or 0 }}</td>
-      <td>{{ o.pay_status }}</td>
-      <td>{{ o.created_at }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="alert alert-info">
-  <i class="bi bi-info-circle"></i> 该设备暂无订单记录。
-  <br><small class="text-muted">订单数据会在设备产生交易后显示在此处。</small>
-</div>
-{% endif %}
-<div class="card mt-3">
-  <div class="card-header">下发命令（示例）</div>
-  <div class="card-body">
-  <div id="deviceMeta" data-device-id="{{ device.id }}" data-device-no='{{ device.device_no }}'></div>
-    <form id="cmdForm" class="row g-2 align-items-center">
-      <div class="col-auto"><select class="form-select" name="command_type"><option value="reboot">重启</option><option value="open_door">开门</option></select></div>
-      <div class="col-auto"><button class="btn btn-primary" type="submit">下发</button></div>
-      <div class="col-auto"><button class="btn btn-outline-success" id="simOk" type="button">模拟成功回执</button></div>
-      <div id="cmdHint" class="text-muted mt-2">最新命令回执将显示在此。</div>
-    </form>
+<div id="meta" data-device-id="{{ device.id }}" data-device-no='{{ device.device_no }}'></div>
+
+<!-- 顶部状态区 -->
+<div class="sticky-top bg-body pb-2 mb-3" style="top:56px;z-index:2">
+  <div class="d-flex align-items-center gap-3">
+    <h4 class="mb-0"><i class="bi bi-info-circle text-primary me-1" id="btnParams" style="cursor:pointer" title="设备参数"></i> {{ device.device_no }}</h4>
+    <span id="stOnline" class="badge bg-secondary">离线</span>
+    <span id="stFault" class="badge bg-success" style="cursor:pointer">故障正常</span>
+    <span id="stMaterial" class="badge bg-success" style="cursor:pointer">物料正常</span>
+    <button class="btn btn-sm btn-outline-primary ms-auto" id="btnSync"><i class="bi bi-arrow-repeat"></i> 状态同步</button>
   </div>
 </div>
+
+<div class="row g-3">
+  <!-- 物料区 -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>物料</strong>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" id="btnExportMaterials"><i class="bi bi-download"></i> 导出余量</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="text-muted small mb-2">容量修改/远程填充受机端版本限制</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle" id="tblMaterials">
+            <thead><tr><th>#</th><th>名称</th><th>余量</th><th>最大容量</th><th>单位</th><th>上次同步</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 销售图表 -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <strong>销售曲线</strong>
+        <input type="month" id="month1" class="form-control form-control-sm" style="width:160px">
+        <select id="metric1" class="form-select form-select-sm" style="width:140px"><option value="amount">销售额</option><option value="count">销量</option></select>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnExportSeries">导出</button>
+      </div>
+      <div class="card-body"><canvas id="chartSeries" height="120"></canvas></div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <strong>品类对比曲线</strong>
+        <input type="month" id="month2" class="form-control form-control-sm" style="width:160px">
+        <select id="metric2" class="form-select form-select-sm" style="width:140px"><option value="amount">销售额</option><option value="count">销量</option></select>
+      </div>
+      <div class="card-body"><canvas id="chartCategory" height="120"></canvas></div>
+    </div>
+  </div>
+
+  <!-- 订单与清洗 -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <strong>订单（按月）</strong>
+        <input type="month" id="monthOrders" class="form-control form-control-sm" style="width:160px">
+        <select id="viewOrders" class="form-select form-select-sm" style="width:160px"><option value="amount">销售额</option><option value="count">销量</option><option value="category">品类</option></select>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnExportOrders"><i class="bi bi-download"></i> 导出本月订单</button>
+      </div>
+      <div class="card-body">
+        <div id="ordersSummary" class="mb-2 text-muted small"></div>
+        <div class="table-responsive">
+          <table class="table table-sm" id="tblOrders"><thead><tr><th>订单号</th><th>时间</th><th>产品</th><th>数量</th><th>金额</th><th>支付</th><th>状态</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <strong>清洗日志</strong>
+        <input type="date" id="cleanFrom" class="form-control form-control-sm" style="width:160px">
+        <input type="date" id="cleanTo" class="form-control form-control-sm" style="width:160px">
+        <select id="cleanType" class="form-select form-select-sm" style="width:160px"><option value="">全部</option><option value="rinse">冲洗</option><option value="deep">深度清洗</option></select>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" id="btnExportCleaning"><i class="bi bi-download"></i> 导出</button>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm" id="tblCleaning"><thead><tr><th>时间</th><th>类型</th><th>结果</th><th>耗时(ms)</th><th>备注</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 远程操作 -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header"><strong>远程操作 & 数据导出</strong></div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <h6>普通指令</h6>
+            <div class="input-group input-group-sm mb-2"><span class="input-group-text">口令</span><input id="passcode" class="form-control" placeholder="5位编号或 zhimakaimen+编号 或 110"></div>
+            <div class="d-flex gap-2 mb-2">
+              <button class="btn btn-sm btn-outline-primary" id="btnOpenDoor">打开大门</button>
+              <button class="btn btn-sm btn-outline-danger" id="btnReboot">重启机器</button>
+              <button class="btn btn-sm btn-outline-secondary" id="btnSync2">状态同步</button>
+            </div>
+            <div class="input-group input-group-sm"><span class="input-group-text">制作产品ID</span><input id="mkPid" type="number" class="form-control"><button class="btn btn-outline-primary" id="btnMake">远程制作</button></div>
+          </div>
+          <div class="col-md-4">
+            <h6>参数修改</h6>
+            <div class="input-group input-group-sm mb-2"><span class="input-group-text">产品ID</span><input id="pricePid" type="number" class="form-control"><span class="input-group-text">新价格</span><input id="newPrice" type="number" step="0.01" class="form-control"><button class="btn btn-outline-primary" id="btnSetPrice">修改</button></div>
+            <div class="input-group input-group-sm"><span class="input-group-text">全品折扣%</span><input id="discount" type="number" step="1" class="form-control"><button class="btn btn-outline-primary" id="btnSetDiscount">设置</button></div>
+          </div>
+          <div class="col-md-4">
+            <h6>升级</h6>
+            <div class="input-group input-group-sm mb-2"><span class="input-group-text">类型</span><select id="upType" class="form-select"><option value="ad">广告</option><option value="recipe">配方</option><option value="software">软件</option></select><span class="input-group-text">包ID</span><input id="upPkg" class="form-control"><button class="btn btn-outline-primary" id="btnUpgrade">下发</button></div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" id="btnExportMaterials2">导出本设备物料</button>
+              <a class="btn btn-sm btn-outline-secondary" href="/api/devices/export">导出全部设备</a>
+            </div>
+          </div>
+        </div>
+        <div class="text-muted small mt-2">发送后提示“指令已下发…以机端版本为准”；所有导出与远程操作会记录在操作监控。</div>
+        <hr>
+        <div><strong>最近指令</strong></div>
+        <div id="cmdFeed" class="small text-muted"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 设备参数弹窗 -->
+<div class="modal" tabindex="-1" id="paramsModal"><div class="modal-dialog modal-lg"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">设备参数信息</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><pre id="paramsJson" class="small mb-0"></pre></div>
+  <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">关闭</button></div>
+</div></div></div>
+
 <script>
-  const meta = document.getElementById('deviceMeta');
+  const meta = document.getElementById('meta');
   const deviceId = parseInt(meta.dataset.deviceId);
   const deviceNo = meta.dataset.deviceNo;
-  document.getElementById('cmdForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    const command_type = form.get('command_type');
-    const resp = await fetch('/api/devices/commands', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-  body: JSON.stringify({ device_nos:[deviceNo], command_type: command_type, payload:{} })
+  const fmtNum = (n)=> (n==null?'-':(typeof n==='number'?n.toFixed(2):n));
+  // 分页控件实例
+  let dtOrders, dtCleaning;
+
+  // 顶部状态
+  async function loadSummary(){
+    const r = await fetch(`/api/devices/${deviceId}/summary`); const j = await r.json();
+    document.getElementById('stOnline').textContent = j.online? '在线':'离线';
+    document.getElementById('stOnline').className = 'badge ' + (j.online? 'bg-success':'bg-secondary');
+    const f = document.getElementById('stFault');
+    f.textContent = j.fault_status==='normal'? '故障正常':'故障'; f.className = 'badge ' + (j.fault_status==='normal'?'bg-success':'bg-danger');
+    const m = document.getElementById('stMaterial');
+    m.textContent = j.material_status==='normal'? '物料正常':'缺货'; m.className = 'badge ' + (j.material_status==='normal'?'bg-success':'bg-danger');
+  }
+  document.getElementById('btnParams').onclick = async ()=>{
+    const r = await fetch(`/api/devices/${deviceId}/params`); const j = await r.json();
+    document.getElementById('paramsJson').textContent = JSON.stringify(j, null, 2);
+    new bootstrap.Modal(document.getElementById('paramsModal')).show();
+  };
+  const sync = async ()=>{ await fetch(`/api/devices/${deviceId}/sync_state`, {method:'POST'}); loadSummary(); loadMaterials(); };
+  document.getElementById('btnSync').onclick = sync; document.getElementById('btnSync2').onclick = sync;
+
+  // 物料
+  let dtMaterials;
+  async function loadMaterials(){
+    const r = await fetch(`/api/devices/${deviceId}/materials`); const list = await r.json();
+    const tb = document.querySelector('#tblMaterials tbody'); tb.innerHTML='';
+    list.forEach(it=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${it.bin_id}</td><td>${it.name}</td><td>${fmtNum(it.remain)}</td>
+        <td><div class='input-group input-group-sm'><input type='number' step='0.01' value='${fmtNum(it.capacity)}' class='form-control cap-inp'><button class='btn btn-outline-primary btnCap'>保存</button></div></td>
+        <td>${it.unit}</td><td>${it.updated_at? it.updated_at.replace('T',' ').slice(0,19):''}</td>
+        <td><button class='btn btn-sm btn-outline-success btnFill'>远程填充</button></td>`;
+      tr.querySelector('.btnCap').onclick = async ()=>{
+        const cap = parseFloat(tr.querySelector('.cap-inp').value || '0');
+        await fetch(`/api/devices/${deviceId}/materials/${it.bin_id}/capacity`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({capacity: cap})});
+        loadMaterials();
+      };
+      tr.querySelector('.btnFill').onclick = async ()=>{
+        await fetch(`/api/devices/${deviceId}/materials/${it.bin_id}/fill`, {method:'POST'});
+      };
+      tb.appendChild(tr);
     });
-    document.getElementById('cmdHint').textContent = '已下发: ' + (await resp.text());
-  });
-  document.getElementById('simOk').addEventListener('click', async () => {
-    const fakeId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-    await fetch(`/simulate/device/${encodeURIComponent(deviceNo)}/command_result`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command_id: fakeId, success:true})});
-    document.getElementById('cmdHint').textContent = '已模拟成功回执';
-  });
+    if (dtMaterials) { dtMaterials.destroy(); }
+    dtMaterials = new DataTable('#tblMaterials', {
+      pageLength: 10,
+      pagingType: 'simple_numbers',
+      dom: 't<"d-flex justify-content-between align-items-center mt-2"ip>',
+      language: { paginate: { previous: '上一页', next: '下一页' }, info: '第 _PAGE_ / 共 _PAGES_ 页（共 _TOTAL_ 条）', infoEmpty: '无记录', zeroRecords: '无匹配记录' }
+    });
+  }
+  document.getElementById('btnExportMaterials').onclick = ()=>{ window.location = `/api/devices/${deviceId}/materials/export`; };
+  document.getElementById('btnExportMaterials2').onclick = ()=>{ window.location = `/api/devices/${deviceId}/materials/export`; };
+
+  // 订单
+  function ym(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+  document.getElementById('month1').value = ym();
+  document.getElementById('month2').value = ym();
+  document.getElementById('monthOrders').value = ym();
+  async function loadOrders(){
+    const m = document.getElementById('monthOrders').value; const view = document.getElementById('viewOrders').value;
+    const r = await fetch(`/api/devices/${deviceId}/orders?month=${m}&view=${view}`); const j = await r.json();
+    const tb = document.querySelector('#tblOrders tbody'); tb.innerHTML='';
+    j.items.forEach(o=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${o.order_no||''}</td><td>${o.created_at.replace('T',' ').slice(0,19)}</td><td>${o.product_name||''}</td><td>${o.qty}</td><td>${fmtNum(o.total_amount)}</td><td>${o.pay_method}</td><td>${o.pay_status}</td>`;
+      tb.appendChild(tr);
+    });
+  // 启用分页控件
+    if (dtOrders) { dtOrders.destroy(); }
+    dtOrders = new DataTable('#tblOrders', {
+      pageLength: 20,
+      pagingType: 'simple_numbers',
+      dom: 't<"d-flex justify-content-between align-items-center mt-2"ip>',
+      language: { paginate: { previous: '上一页', next: '下一页' }, info: '第 _PAGE_ / 共 _PAGES_ 页（共 _TOTAL_ 条）', infoEmpty: '无记录', zeroRecords: '无匹配记录' }
+    });
+    const s = j.summary; const box = document.getElementById('ordersSummary');
+    if(s.amount!=null) box.textContent = `本月销售额：${fmtNum(s.amount)}`;
+    else if(s.count!=null) box.textContent = `本月销量：${s.count}`;
+    else if(s.by_category) box.textContent = `品类：` + s.by_category.map(x=>`${x.k}:${x.v}`).join('，');
+  }
+  document.getElementById('btnExportOrders').onclick = ()=>{
+    const m = document.getElementById('monthOrders').value; window.location = `/api/devices/${deviceId}/orders/export?month=${m}`;
+  };
+  ['monthOrders','viewOrders'].forEach(id=> document.getElementById(id).addEventListener('change', loadOrders));
+
+  // 清洗
+  async function loadCleaning(){
+    const p = new URLSearchParams();
+    if(document.getElementById('cleanFrom').value) p.set('from', document.getElementById('cleanFrom').value);
+    if(document.getElementById('cleanTo').value) p.set('to', document.getElementById('cleanTo').value);
+    if(document.getElementById('cleanType').value) p.set('type', document.getElementById('cleanType').value);
+    const r = await fetch(`/api/devices/${deviceId}/cleaning?`+p.toString()); const list = await r.json();
+    const tb = document.querySelector('#tblCleaning tbody'); tb.innerHTML='';
+    list.forEach(c=>{
+      const tr = document.createElement('tr'); tr.innerHTML = `<td>${c.created_at.replace('T',' ').slice(0,19)}</td><td>${c.type}</td><td>${c.result}</td><td>${c.duration_ms}</td><td>${c.note||''}</td>`; tb.appendChild(tr);
+    });
+  // 启用分页控件
+    if (dtCleaning) { dtCleaning.destroy(); }
+    dtCleaning = new DataTable('#tblCleaning', {
+      pageLength: 20,
+      pagingType: 'simple_numbers',
+      dom: 't<"d-flex justify-content-between align-items-center mt-2"ip>',
+      language: { paginate: { previous: '上一页', next: '下一页' }, info: '第 _PAGE_ / 共 _PAGES_ 页（共 _TOTAL_ 条）', infoEmpty: '无记录', zeroRecords: '无匹配记录' }
+    });
+  }
+  ['cleanFrom','cleanTo','cleanType'].forEach(id=> document.getElementById(id).addEventListener('change', loadCleaning));
+  document.getElementById('btnExportCleaning').onclick = ()=>{ window.location = `/api/devices/${deviceId}/cleaning/export`; };
+
+  // 图表
+  let chart1, chart2;
+  async function loadSeries(){
+    const m = document.getElementById('month1').value; const metric = document.getElementById('metric1').value;
+    const d = await (await fetch(`/api/devices/${deviceId}/charts/series?month=${m}&metric=${metric}`)).json();
+    const labels = d.map(x=>x.k); const vals = d.map(x=>x.v);
+    if(chart1) chart1.destroy();
+    chart1 = new Chart(document.getElementById('chartSeries'), {type:'line', data:{labels, datasets:[{label: metric==='amount'?'销售额':'销量', data:vals, borderColor:'#0d6efd', fill:false}]}});
+  }
+  async function loadCategory(){
+    const m = document.getElementById('month2').value; const metric = document.getElementById('metric2').value;
+    const d = await (await fetch(`/api/devices/${deviceId}/charts/category_compare?month=${m}&metric=${metric}`)).json();
+    const labels = d.map(x=>x.k); const vals = d.map(x=>x.v);
+    if(chart2) chart2.destroy();
+    chart2 = new Chart(document.getElementById('chartCategory'), {type:'bar', data:{labels, datasets:[{label: metric==='amount'?'销售额':'销量', data:vals, backgroundColor:'#198754'}]}});
+  }
+  document.getElementById('month1').addEventListener('change', loadSeries);
+  document.getElementById('metric1').addEventListener('change', loadSeries);
+  document.getElementById('month2').addEventListener('change', loadCategory);
+  document.getElementById('metric2').addEventListener('change', loadCategory);
+  document.getElementById('btnExportSeries').onclick = ()=>{ const m=document.getElementById('month1').value; const metric=document.getElementById('metric1').value; window.location=`/api/devices/${deviceId}/charts/export?type=series&month=${m}&metric=${metric}` };
+
+  // 远程操作
+  async function call(url, body){
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
+    const j = await r.json();
+    const feed = document.getElementById('cmdFeed');
+    feed.textContent = `[${new Date().toLocaleString()}] ${j.message || r.status}` + '\n' + feed.textContent;
+  }
+  document.getElementById('btnOpenDoor').onclick = ()=> call(`/api/devices/${deviceId}/command/open_door`, {passcode: document.getElementById('passcode').value});
+  document.getElementById('btnReboot').onclick = ()=> call(`/api/devices/${deviceId}/command/reboot`, {passcode: document.getElementById('passcode').value});
+  document.getElementById('btnMake').onclick = ()=> call(`/api/devices/${deviceId}/command/make_product`, {product_id: parseInt(document.getElementById('mkPid').value||'0')});
+  document.getElementById('btnSetPrice').onclick = ()=> call(`/api/devices/${deviceId}/pricing/set_price`, {product_id: parseInt(document.getElementById('pricePid').value||'0'), new_price: parseFloat(document.getElementById('newPrice').value||'0')});
+  document.getElementById('btnSetDiscount').onclick = ()=> call(`/api/devices/${deviceId}/pricing/set_discount`, {discount_percent: parseFloat(document.getElementById('discount').value||'0')});
+  document.getElementById('btnUpgrade').onclick = ()=> call(`/api/devices/${deviceId}/upgrade`, {type: document.getElementById('upType').value, package_id: document.getElementById('upPkg').value});
+
+  // 初始加载
+  loadSummary(); loadMaterials(); loadOrders(); loadCleaning(); loadSeries(); loadCategory();
 </script>
 {% endblock %}

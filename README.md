@@ -9,7 +9,25 @@
 - 后台任务（内存队列 + 线程 + APScheduler 定时任务）
 - API 文档（/api/docs，Swagger UI）
 
-该版本优先保证“最小可运行”，部分复杂功能以占位实现，后续可扩展。
+该版本优先保证“最小可运行”，并在保持简洁的同时，补充了仪表盘物料告警、配方管理可视化编辑器、包管理整合、以及离线校验等实用增强。
+
+## 新增与变更概览（相对早期版本）
+
+- 仪表盘物料风险增强：
+  - 将物料风险拆分为“告警 Top5（低于阈值）”与“即将告警 Top5（略高于阈值）”，并提供数量徽标统计。
+  - 列表项展示“最大容量/告警线/余量”，并计算两类百分比：告警对比阈值、库存占比对比最大容量；项中显示物料名称与单位，并可跳转设备详情。
+  - 新增接口字段：materials_near_top5、materials_alert_stats；原 materials_alert_top5 项结构扩充（material_name、unit、capacity、stock_percent、severity）。
+- 配方管理整合与可视化编辑器：
+  - 配方列表/详情/编辑器页，支持拖拽步骤编辑、参数表单、实时 JSON 预览与 Schema 校验。
+  - 发布版本并自动打包产物（ZIP+MD5），配方详情内集成“配方包”管理（列表/上传/下载/删除），移除独立的包管理入口。
+  - 新增“新建配方”直达编辑器并默认生成一条空步骤；版本冲突与唯一性校验。
+  - Ajv JSON Schema 提供 CDN 首选 + 本地 UMD 兜底（内网环境可用）。
+- 种子脚本整合：
+  - 统一使用 `scripts/seed_data.py`；整合配方与物料示例数据，保留 demo/stats 等命令。
+- 列表页体验：
+  - DataTables 分页/排序/搜索，主要列表支持 CSV 导出。
+
+以上增强均保持对旧字段和基础接口的兼容，细节见下文。
 
 ## 目录结构
 
@@ -49,6 +67,8 @@ coffe/
 │  │  ├─ orders.html
 │  │  ├─ upgrades.html
 │  │  ├─ recipes.html
+│  │  ├─ recipe_detail.html
+│  │  ├─ recipe_edit.html
 │  │  ├─ faults.html
 │  │  ├─ workorders.html
 │  │  ├─ finance.html
@@ -56,7 +76,8 @@ coffe/
 │  │  └─ tasks.html
 │  └─ static/
 │     ├─ css/style.css
-│     └─ js/app.js
+│     ├─ js/app.js
+│     └─ vendor/ajv.min.js  # 本地 UMD 兜底（可替换为正式构建）
 ├─ scripts/
 │  ├─ init_db.py
 │  └─ seed_data.py
@@ -147,19 +168,37 @@ pytest -q
 - 登录/刷新：
   - POST /api/auth/login 返回 access_token、refresh_token
   - POST /api/auth/refresh 使用 refresh token 获取新 access token
-- 仪表盘：GET /api/dashboard/summary 支持 merchant 与时间范围
+- 仪表盘：
+  - GET /api/dashboard/summary 支持 merchant 与时间范围；会返回：
+    - kpis：device_total、online_rate、sales_today、revenue_today、changes（同比/环比）
+    - series：dates、online_rate、active_devices、daily_sales、daily_revenue
+    - faults_pie：按故障级别分布
+    - materials_alert_top5：低于阈值的前 5 项（扩展字段：material_name、unit、capacity、percent、stock_percent、severity）
+    - materials_near_top5：阈值≤余量≤1.2×阈值的前 5 项（near 列表）
+    - materials_alert_stats：{critical, warning, near} 统计
+  - 管理页面（/dashboard）默认每 60 秒自动刷新，以降低与“物料管理”不同步的感知。
 - 设备：
   - GET /api/devices 支持分页/搜索（简单实现）与 CSV 导出（format=csv）
   - GET /api/devices/{id} 详情（含最近记录）
   - POST /api/devices/commands 批量下发；写入 remote_commands 并进入内存队列
   - POST /api/devices/{id}/command_result 设备回执（或用模拟接口）
 - 订单：GET /api/orders 支持筛选与 CSV 导出
-- 物料：GET/PUT /api/devices/{id}/materials（最小实现）
+- 物料：
+  - GET/PUT /api/devices/{id}/materials（最小实现）
+  - 术语澄清：capacity=最大容量，threshold=告警线，remain=当前余量；库存占比=remain/capacity，告警强弱对比的是 remain 与 threshold。
 - 故障/工单：GET /api/faults，POST /api/workorders，PATCH /api/workorders/{id}
 - 升级/配方：
-  - POST /api/upgrades 上传包到 packages/
-  - POST /api/upgrades/dispatch 下发升级
-  - POST /api/recipes/package 生成 JSON 配方文件（保存在 packages/）
+  - 升级包：POST /api/upgrades 上传到 packages/；POST /api/upgrades/dispatch 下发升级
+  - 配方管理：
+    - 页面与路由：
+      - GET /recipes 列表；GET /recipes/{id} 详情；GET /recipes/{id}/edit 可视化编辑器；GET /recipes/new 创建草稿并直达编辑器
+    - 接口（摘要）：
+      - GET/POST /api/recipes 列表/创建；GET/PUT /api/recipes/{id} 详情/更新；POST /api/recipes/{id}/publish 发布版本（唯一性检查）
+      - GET /api/recipes/schema 获取 JSON Schema（编辑器校验使用）
+      - GET /api/recipes/{rid}/packages 配方对应的包列表；POST /api/recipes/{rid}/packages/upload 上传；DELETE /api/recipes/packages/{pid} 删除；GET /api/recipes/packages/{pid}/download 下载
+    - 编辑器：
+      - 拖拽步骤编辑与参数表单；实时 JSON 预览与 Schema 校验；保存草稿 / 发布版本
+      - Ajv 校验：CDN 首选，自动回退至本地 `static/vendor/ajv.min.js`，支持内网环境
 - 审计日志：GET /api/operation_logs，页面可检索/导出
 - 模拟设备：
   - POST /simulate/device/{device_no}/status
@@ -189,8 +228,17 @@ pytest -q
 ## 限制与后续扩展
 
 - 仪表盘统计为简化聚合；可扩展为更复杂的指标与图表
+- materials_near_top5 判定默认使用 1.2×threshold，可改造为可配置项
 - 导出/长任务使用内存队列；可替换为 Redis/RabbitMQ
 - WebSocket/SSE 未默认启用，可作为加分项接入
+
+## 常见问题（FAQ）
+
+- 为什么“物料风险”里会出现“超阈 +5.3%”？
+  - 告警强弱是以阈值（threshold）为基准的对比：当 remain 略高于 threshold 时会显示“超阈 +X%”，用于标识“即将告警”。
+  - 同时会显示“库存占比”，它是以最大容量（capacity）为基准的百分比，两者含义不同。
+- 离线环境 Schema 校验如何工作？
+  - 页面会优先加载 CDN 的 Ajv；若受限则自动降级为本地 `static/vendor/ajv.min.js`，可替换为正式 UMD 构建以获得完整校验能力。
 
 ## 数据库迁移（Alembic）
 

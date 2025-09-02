@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h3 class="m-0">配方：{{ recipe.name }} <small class="text-muted">{{ recipe.version }}</small></h3>
+  <div class="d-flex gap-2">
+  <a class="btn btn-outline-secondary" href="/recipes">返回列表</a>
+  <a class="btn btn-outline-primary" href="/recipes/{{ recipe.id }}/edit">编辑</a>
+    <button class="btn btn-outline-secondary" id="btnPreview">预览 JSON</button>
+    <button class="btn btn-outline-primary" id="btnPublish">发布并打包</button>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card"><div class="card-header">步骤</div><div class="card-body">
+      <pre id="steps" class="small mb-0">{{ (recipe.steps or []) | tojson(indent=2) }}</pre>
+    </div></div>
+    <div class="card mt-3"><div class="card-header d-flex justify-content-between align-items-center">配方包
+      <div>
+        <label class="btn btn-sm btn-outline-secondary mb-0">
+          上传ZIP<input type="file" id="pkgUpload" accept=".zip" hidden>
+        </label>
+      </div>
+    </div>
+    <div class="card-body">
+      <table class="table table-sm" id="pkgTbl"><thead><tr><th>ID</th><th>文件名</th><th>MD5</th><th>大小</th><th>时间</th><th>操作</th></tr></thead><tbody></tbody></table>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header">元数据</div><div class="card-body">
+      <div>状态：<span class="badge bg-secondary">{{ recipe.status }}</span></div>
+      <div>作者：{{ recipe.author_id }}</div>
+      <div>适用机型：<pre class="small mb-0">{{ (recipe.applicable_models or []) | tojson }}</pre></div>
+      <div class="mt-2">料盒映射：<pre class="small mb-0">{{ (recipe.bin_mapping_schema or {}) | tojson(indent=2) }}</pre></div>
+    </div></div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('btnPreview').onclick = async ()=>{
+    const j = await (await fetch('/api/recipes/{{ recipe.id }}')).json();
+    alert(JSON.stringify({ name: j.name, version: j.version, steps: j.steps, bin_mapping: j.bin_mapping_schema }, null, 2));
+  };
+  document.getElementById('btnPublish').onclick = async ()=>{
+    const r = await fetch('/api/recipes/{{ recipe.id }}/publish', {method:'POST'}); const j = await r.json(); alert(JSON.stringify(j,null,2));
+  };
+  // 包列表
+  async function loadPkgs(){
+    const j = await (await fetch('/api/recipes/{{ recipe.id }}/packages')).json();
+    const tb = document.querySelector('#pkgTbl tbody'); tb.innerHTML='';
+    (j.items||[]).forEach(p=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${p.id}</td><td>${p.package_name}</td><td class='small'>${p.md5}</td><td>${(p.size_bytes||0)}</td><td>${p.created_at.replace('T',' ').slice(0,19)}</td>
+      <td class='d-flex gap-2'><a class='btn btn-sm btn-outline-primary' href='/api/recipes/packages/${p.id}/download'>下载</a>
+      <button class='btn btn-sm btn-outline-danger' data-del='${p.id}'>删除</button></td>`;
+      tb.appendChild(tr);
+    });
+    // 绑定删除
+    tb.querySelectorAll('[data-del]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('确定删除该配方包？此操作不可恢复。')) return;
+        await fetch(`/api/recipes/packages/${btn.dataset.del}`, {method:'DELETE'});
+        await loadPkgs();
+      });
+    });
+  }
+  loadPkgs();
+  // 上传包
+  document.getElementById('pkgUpload').addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    const fd = new FormData(); fd.append('file', f);
+    await fetch('/api/recipes/{{ recipe.id }}/packages/upload', {method:'POST', body: fd});
+    await loadPkgs(); e.target.value='';
+  });
+</script>
+{% endblock %}

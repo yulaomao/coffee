@@ -22,9 +22,11 @@ if str(ROOT) not in sys.path:
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import (  # noqa: E402
-    User, Merchant, Device, Order, Product, Fault, WorkOrder, UpgradePackage
+    User, Merchant, Device, Order, Product, Fault, WorkOrder, UpgradePackage, DeviceMaterial, CleaningLog, MaterialCatalog
 )
 from app.utils.security import hash_password  # noqa: E402
+from app.blueprints.recipes import Recipe  # noqa: E402
+from app.blueprints.recipes import _make_recipe_package  # noqa: E402
 
 
 def ensure_basics():
@@ -44,6 +46,19 @@ def ensure_basics():
         p = Product.query.filter_by(name=name).first()
         if not p:
             db.session.add(Product(name=name, price=price))
+    # 物料目录（示例）
+    mats = [
+        (1, "咖啡豆", "豆"),
+        (2, "奶粉", "奶粉"),
+        (3, "糖浆", "糖浆"),
+        (4, "纸杯", "纸耗"),
+        (5, "搅拌棒", "辅材"),
+    ]
+    for mid, name, cat in mats:
+        mc = MaterialCatalog.query.filter_by(id=mid).first()
+        if not mc:
+            mc = MaterialCatalog(id=mid, name=name, unit="g" if cat in ("豆","奶粉","糖浆") else "pcs", category=cat)
+            db.session.add(mc)
     db.session.commit()
     return m
 
@@ -99,6 +114,14 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
         devs.append(d)
     db.session.commit()
 
+    # 物料（为每台设备造 3-4 个料盒）
+    for d in devs:
+        exist = DeviceMaterial.query.filter_by(device_id=d.id).count()
+        if not exist:
+            for mid in range(1, 5):
+                db.session.add(DeviceMaterial(device_id=d.id, material_id=mid, remain=random.uniform(10, 100), capacity=100, threshold=10))
+    db.session.commit()
+
     # 订单
     if orders > 0 and products:
         batch = []
@@ -126,6 +149,15 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
         db.session.add(f); db.session.flush()
         if random.random() < 0.5:
             db.session.add(WorkOrder(device_id=d.id, fault_id=f.id, status=random.choice(["pending","in_progress","solved"])) )
+    db.session.commit()
+
+    # 清洗日志（每台设备近 10 条）
+    now = datetime.utcnow()
+    for d in devs:
+        if CleaningLog.query.filter_by(device_id=d.id).count() == 0:
+            for k in range(10):
+                dt = now - timedelta(days=random.randint(0, 30), hours=random.randint(0,23))
+                db.session.add(CleaningLog(device_id=d.id, type=random.choice(["rinse","deep","steam"]), result=random.choice(["success","success","fail"]), duration_ms=random.randint(10000, 120000), note=None, created_at=dt))
     db.session.commit()
 
     # 升级包占位
@@ -223,6 +255,53 @@ def clear_demo():
     print("[clear-demo] 已清空 DEMO-* 相关数据。")
 
 
+def seed_recipes(with_packages: bool = True):
+    """创建示例配方，并可选生成配方包。"""
+    samples = [
+        {
+            "name": "Espresso",
+            "version": "v1.0.0",
+            "description": "经典意式浓缩",
+            "steps": [
+                {"step_id":"s1","type":"grind","params":{"dose_g":18,"grind_time_ms":6000,"grind_level":5}},
+                {"step_id":"s2","type":"tamp","params":{"pressure_kpa":30,"duration_ms":1500}},
+                {"step_id":"s3","type":"brew","params":{"water_ml":40,"water_temp_c":92,"pump_time_ms":25000}},
+            ],
+            "bin_mapping_schema": {"bin1":"coffee_beans_A"},
+            "applicable_models": ["C1-1.0+"],
+        },
+        {
+            "name": "Latte",
+            "version": "v1.0.0",
+            "description": "拿铁",
+            "steps": [
+                {"step_id":"s1","type":"grind","params":{"dose_g":18,"grind_time_ms":6200,"grind_level":5}},
+                {"step_id":"s2","type":"tamp","params":{"pressure_kpa":30,"duration_ms":1500}},
+                {"step_id":"s3","type":"brew","params":{"water_ml":35,"water_temp_c":92,"pump_time_ms":23000}},
+                {"step_id":"s4","type":"milk","params":{"milk_ml":180,"steam_time_ms":12000}},
+            ],
+            "bin_mapping_schema": {"bin1":"coffee_beans_A","bin2":"milk_A"},
+            "applicable_models": ["C1-1.0+","C2-2.0+"],
+        },
+    ]
+    created = 0
+    pkgs = 0
+    for s in samples:
+        exists = Recipe.query.filter_by(name=s["name"], version=s["version"]).first()
+        if exists:
+            continue
+        r = Recipe(name=s["name"], version=s["version"], description=s["description"],
+                   steps=s["steps"], bin_mapping_schema=s["bin_mapping_schema"],
+                   applicable_models=s["applicable_models"], status="published")
+        db.session.add(r)
+        db.session.commit()
+        created += 1
+        if with_packages:
+            _make_recipe_package(r, uploader_id=None)
+            pkgs += 1
+    print(f"[recipes] 新建 {created} 个配方，生成包 {pkgs} 个（已存在的跳过）。")
+
+
 def main():
     ap = argparse.ArgumentParser(description="统一示例数据脚本")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -249,6 +328,9 @@ def main():
 
     sub.add_parser("clear-demo", help="清空 DEMO-* 数据")
 
+    p_rec = sub.add_parser("recipes", help="创建示例配方")
+    p_rec.add_argument("--no-packages", action="store_true", help="仅建配方，不生成包")
+
     args = ap.parse_args()
 
     app = create_app()
@@ -263,6 +345,8 @@ def main():
             seed_stats(args.days, args.min_sales, args.max_sales)
         elif args.cmd == "clear-demo":
             clear_demo()
+        elif args.cmd == "recipes":
+            seed_recipes(with_packages=not args.no_packages)
 
 
 if __name__ == "__main__":

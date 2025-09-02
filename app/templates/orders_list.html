@@ -68,7 +68,18 @@
       tr.innerHTML = `<td><a href="#" class="view" data-no="${o.order_no}">${o.order_no}</a></td><td>${o.created_at.replace('T',' ').slice(0,19)}</td><td>${o.device_id||''}</td><td>${o.product_name||o.product_id||''}</td><td>${o.qty}</td><td>￥${(o.total_amount||0).toFixed?o.total_amount.toFixed(2):Number(o.total_amount).toFixed(2)}</td><td>${o.pay_method}</td><td>${o.pay_status}</td><td><button class="btn btn-sm btn-outline-danger refund" data-no="${o.order_no}">退款</button></td>`;
       tbody.appendChild(tr);
     });
-    if(dt) dt.destroy(); dt = new DataTable('#tbl', {pageLength: 50});
+    if(dt) dt.destroy();
+    dt = new DataTable('#tbl', {
+      pageLength: 50,
+      pagingType: 'simple_numbers',
+      dom: 't<"d-flex justify-content-between align-items-center mt-2"ip>',
+      language: {
+        paginate: { previous: '上一页', next: '下一页' },
+        info: '第 _PAGE_ / 共 _PAGES_ 页（共 _TOTAL_ 条）',
+        infoEmpty: '无记录',
+        zeroRecords: '无匹配记录'
+      }
+    });
   }
   document.getElementById('btnSearch').onclick = load;
   document.getElementById('btnExport').onclick = ()=>{ window.location = '/api/orders/export?' + buildQuery(); };

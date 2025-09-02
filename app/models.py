@@ -61,6 +61,7 @@ class MaterialCatalog(db.Model, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(nullable=False, unique=True)
     unit: Mapped[str] = mapped_column(nullable=False, default="g")
+    category: Mapped[Optional[str]] = mapped_column(nullable=True)  # 物料类型：豆/奶粉/糖浆/纸杯/搅拌棒 等
 
 
 class Device(db.Model, TimestampMixin):
@@ -154,6 +155,16 @@ class WorkOrder(db.Model, TimestampMixin):
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False)
     assigned_to_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     status: Mapped[str] = mapped_column(nullable=False, default="pending")
+    note: Mapped[Optional[str]] = mapped_column(nullable=True)
+
+
+class CleaningLog(db.Model, TimestampMixin):
+    __tablename__ = "cleaning_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(nullable=False, default="rinse")  # rinse|deep|steam 等
+    result: Mapped[str] = mapped_column(nullable=False, default="success")  # success|fail
+    duration_ms: Mapped[int] = mapped_column(nullable=False, default=0)
     note: Mapped[Optional[str]] = mapped_column(nullable=True)
 
 

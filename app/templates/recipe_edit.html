@@ -1,0 +1,370 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h3 class="m-0">编辑配方：{{ recipe.name }}</h3>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-secondary" id="btnValidate">校验</button>
+    <button class="btn btn-outline-primary" id="btnSave">保存草稿</button>
+    <button class="btn btn-primary" id="btnPublish">发布并打包</button>
+  </div>
+</div>
+
+<div class="row g-2 mb-3">
+  <div class="col-sm-6">
+    <label class="form-label small mb-1">配方名称</label>
+    <input class="form-control" id="recipeName" value="{{ recipe.name }}" placeholder="名称" />
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label small mb-1">版本号</label>
+    <input class="form-control" id="recipeVersion" value="{{ recipe.version or 'v1.0.0' }}" placeholder="v1.0.0" />
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label small mb-1">预计时长(s)</label>
+    <input class="form-control" id="estimatedTime" type="number" min="0" step="1" placeholder="可选" />
+  </div>
+  <div class="col-12">
+    <label class="form-label small mb-1">描述</label>
+    <textarea class="form-control" id="recipeDesc" rows="2" placeholder="描述（可选）">{{ recipe.description or '' }}</textarea>
+  </div>
+  <div class="small text-muted px-2">提示：修改版本号后点击“发布并打包”，会以新版本保存为一条记录并发布。</div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>步骤编辑器</strong>
+        <div class="btn-group">
+          <button class="btn btn-sm btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">新增步骤</button>
+          <ul class="dropdown-menu dropdown-menu-end" id="stepTypeMenu">
+            <li><a class="dropdown-item" data-type="grind">研磨 (grind)</a></li>
+            <li><a class="dropdown-item" data-type="tamp">压粉 (tamp)</a></li>
+            <li><a class="dropdown-item" data-type="brew">萃取 (brew)</a></li>
+            <li><a class="dropdown-item" data-type="milk">加奶 (milk)</a></li>
+            <li><a class="dropdown-item" data-type="syrup">加糖浆 (syrup)</a></li>
+            <li><a class="dropdown-item" data-type="powder">加辅料 (powder)</a></li>
+            <li><a class="dropdown-item" data-type="stir">搅拌 (stir)</a></li>
+            <li><a class="dropdown-item" data-type="wait">延时 (wait)</a></li>
+            <li><a class="dropdown-item" data-type="dispense">出杯 (dispense)</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="card-body">
+  <div id="stepsList" class="list-group"></div>
+  <div id="stepsEmpty" class="text-muted small py-2">暂无步骤，点击“新增步骤”添加。</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card mb-3"><div class="card-header">料盒映射</div><div class="card-body">
+      <div id="binMap"></div>
+      <button class="btn btn-sm btn-outline-secondary mt-2" id="btnAddBin">添加映射</button>
+    </div></div>
+    <div class="card mb-3"><div class="card-header">适用机型</div><div class="card-body">
+      <select id="modelsSelect" class="form-select" multiple size="6">
+        {% for m in models_list %}
+          <option value="{{ m }}">{{ m }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">按住 Ctrl/Cmd 可多选</div>
+    </div></div>
+    <div class="card"><div class="card-header">JSON 预览 / 校验错误</div><div class="card-body">
+      <pre id="jsonPreview" class="small mb-2" style="max-height:260px;overflow:auto"></pre>
+      <div id="err" class="text-danger small"></div>
+    </div></div>
+  </div>
+</div>
+
+<template id="tplStep">
+  <div class="list-group-item p-2 mb-2 border rounded step-item" draggable="true">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <span class="text-muted">拖拽</span>
+      <select class="form-select form-select-sm step-type" style="width:180px">
+        <option value="grind">研磨</option>
+        <option value="tamp">压粉</option>
+        <option value="brew">萃取</option>
+        <option value="milk">加奶</option>
+        <option value="syrup">加糖浆</option>
+        <option value="powder">加辅料</option>
+        <option value="stir">搅拌</option>
+        <option value="wait">延时</option>
+        <option value="dispense">出杯</option>
+      </select>
+      <button class="btn btn-sm btn-outline-danger ms-auto btnDel">删除</button>
+    </div>
+    <div class="row g-2 params"></div>
+  </div>
+</template>
+
+<script id="recipeInit" type="application/json">{{ {
+  'steps': (recipe.steps or []),
+  'bin_mapping_schema': (recipe.bin_mapping_schema or {}),
+  'applicable_models': (recipe.applicable_models or []),
+  'meta': (recipe.meta or {}),
+  'version': (recipe.version or 'v1.0.0')
+} | tojson }}</script>
+
+<script>
+  // Ajv for JSON Schema 校验
+  const ajvCdn = document.createElement('script');
+  ajvCdn.src = 'https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.min.js';
+  ajvCdn.onerror = ()=>{
+    const local = document.createElement('script');
+    local.src = "{{ url_for('static', filename='vendor/ajv.min.js') }}";
+    document.head.appendChild(local);
+  };
+  document.head.appendChild(ajvCdn);
+
+  // 初始化数据（从 JSON 脚本标签读取，避免模板花括号影响 JS 解析）
+  const init = JSON.parse(document.getElementById('recipeInit').textContent || '{}');
+
+  const stepsList = document.getElementById('stepsList');
+  const tplStep = document.getElementById('tplStep');
+  const err = document.getElementById('err');
+  const nameEl = document.getElementById('recipeName');
+  const verEl = document.getElementById('recipeVersion');
+  const descEl = document.getElementById('recipeDesc');
+  const estEl = document.getElementById('estimatedTime');
+  const modelsSelect = document.getElementById('modelsSelect');
+  const initialVersion = init.version || '{{ recipe.version or "v1.0.0" }}';
+  if(init.meta && typeof init.meta.estimated_time_s === 'number') estEl.value = init.meta.estimated_time_s;
+
+  function renderSteps(){
+    stepsList.innerHTML = '';
+    (init.steps||[]).forEach((s, idx)=> addStep(s, idx));
+  document.getElementById('stepsEmpty').style.display = stepsList.children.length ? 'none' : 'block';
+    refreshPreview();
+  }
+  function addStep(step={}, idx){
+    const node = tplStep.content.firstElementChild.cloneNode(true);
+    node.querySelector('.step-type').value = step.type || 'grind';
+    const params = node.querySelector('.params');
+    const spec = fieldsFor(node.querySelector('.step-type').value);
+    spec.forEach(f=> params.appendChild(paramInput(f, step.params? step.params[f.key]: undefined)) );
+    node.querySelector('.step-type').addEventListener('change', (e)=>{
+      params.innerHTML = '';
+      fieldsFor(e.target.value).forEach(f=> params.appendChild(paramInput(f)) );
+      refreshPreview();
+    });
+    node.querySelector('.btnDel').onclick = ()=>{ node.remove(); refreshPreview(); };
+  // 上移/下移按钮
+  const up = document.createElement('button'); up.className='btn btn-sm btn-outline-secondary me-2'; up.textContent='上移';
+  const dn = document.createElement('button'); dn.className='btn btn-sm btn-outline-secondary'; dn.textContent='下移';
+  node.querySelector('.d-flex.align-items-center').insertBefore(up, node.querySelector('.btnDel'));
+  node.querySelector('.d-flex.align-items-center').insertBefore(dn, node.querySelector('.btnDel'));
+  up.onclick = ()=>{ const prev = node.previousElementSibling; if(prev){ stepsList.insertBefore(node, prev); refreshPreview(); }};
+  dn.onclick = ()=>{ const next = node.nextElementSibling; if(next){ stepsList.insertBefore(next, node); refreshPreview(); }};
+    enableDrag(node);
+    stepsList.appendChild(node);
+  }
+  function fieldsFor(type){
+    const dict = {
+      grind:[{key:'dose_g',label:'投粉(g)',min:0,max:30},{key:'grind_time_ms',label:'研磨时长(ms)',min:100,max:10000},{key:'grind_level',label:'研磨级别',min:1,max:10}],
+      tamp:[{key:'pressure_kpa',label:'压力(kPa)',min:10,max:100},{key:'duration_ms',label:'持续(ms)',min:100,max:5000}],
+      brew:[{key:'water_ml',label:'水量(ml)',min:10,max:500},{key:'water_temp_c',label:'水温(°C)',min:60,max:100},{key:'pump_time_ms',label:'泵时长(ms)',min:500,max:20000}],
+      milk:[{key:'milk_ml',label:'奶量(ml)',min:10,max:300},{key:'steam_time_ms',label:'蒸汽时长(ms)',min:200,max:10000}],
+      syrup:[{key:'syrup_bin_id',label:'糖浆料盒ID',min:1,max:12},{key:'syrup_ml',label:'糖浆(ml)',min:1,max:60}],
+      powder:[{key:'powder_bin_id',label:'辅料理盒ID',min:1,max:12},{key:'powder_g',label:'辅料(g)',min:1,max:30}],
+      stir:[{key:'stir_time_ms',label:'搅拌(ms)',min:100,max:20000},{key:'speed_level',label:'速度等级',min:1,max:5}],
+      wait:[{key:'duration_ms',label:'等待(ms)',min:100,max:60000}],
+      dispense:[{key:'cup_id',label:'杯位ID',min:1,max:10}],
+    };
+    return dict[type]||[];
+  }
+  function paramInput(field, value){
+    const wrap = document.createElement('div'); wrap.className='col-6';
+    wrap.innerHTML = `<label class='form-label small'>${field.label}</label><input type='number' class='form-control form-control-sm ip' data-key='${field.key}' min='${field.min}' max='${field.max}' value='${value??''}'>`;
+    wrap.querySelector('input').addEventListener('input', ()=> refreshPreview());
+    return wrap;
+  }
+  function enableDrag(item){
+    item.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', 'drag'); item.classList.add('opacity-50'); });
+    item.addEventListener('dragend', ()=> item.classList.remove('opacity-50'));
+    stepsList.addEventListener('dragover', e=>{
+      e.preventDefault();
+      const after = getDragAfterElement(stepsList, e.clientY);
+      if(after==null) stepsList.appendChild(item); else stepsList.insertBefore(item, after);
+    });
+  }
+  function getDragAfterElement(container, y){
+    const els = [...container.querySelectorAll('.step-item:not(.opacity-50)')];
+    return els.reduce((closest, child)=>{
+      const box = child.getBoundingClientRect(); const offset = y - box.top - box.height/2;
+      if(offset<0 && offset>closest.offset) return {offset, element: child}; else return closest;
+    }, {offset: Number.NEGATIVE_INFINITY}).element;
+  }
+  function collect(){
+    const steps = [...document.querySelectorAll('.step-item')].map((item, i)=>{
+      const type = item.querySelector('.step-type').value;
+      const params = {};
+      item.querySelectorAll('.ip').forEach(ip=>{
+        const v = ip.value;
+        if(v === '' || v === null) return; // 跳过空值
+        const num = Number(v);
+        if(Number.isFinite(num)) params[ip.dataset.key] = num;
+      });
+      return { step_id: 's'+(i+1), type, params };
+    });
+    // bin map
+    const bins = {}; document.querySelectorAll('.bin-item').forEach(row=>{ bins[row.querySelector('.bin-key').value] = row.querySelector('.bin-val').value; });
+  // models (多选)
+  const models = [...modelsSelect.options].filter(o=>o.selected).map(o=>o.value);
+    const meta = {};
+    const ets = Number(estEl.value);
+    if(Number.isFinite(ets)) meta.estimated_time_s = ets;
+    return { steps, bin_mapping: bins, applicable_models: models, meta };
+  }
+  async function refreshPreview(){
+    const data = collect();
+  const preview = { name: nameEl.value, version: verEl.value || initialVersion, steps: data.steps, bin_mapping: data.bin_mapping, applicable_models: data.applicable_models };
+    document.getElementById('jsonPreview').textContent = JSON.stringify(preview, null, 2);
+    err.textContent='';
+    // 自动轻量校验（Ajv 异步加载后可用）
+    try{
+      if(window.ajv){ await runSchemaValidate(preview); }
+    }catch(_){ /* ignore */ }
+  }
+  function renderBins(){
+    const bm = document.getElementById('binMap'); bm.innerHTML='';
+    const entries = Object.entries(init.bin_mapping_schema||{});
+    entries.forEach(([k,v])=> addBin(k, v));
+  }
+  function addBin(k='', v=''){
+    const row = document.createElement('div'); row.className='d-flex gap-2 align-items-center mb-2 bin-item';
+    const select = document.createElement('select'); select.className='form-select form-select-sm bin-val';
+    select.innerHTML = `
+      <option value="">选择物料...</option>
+      {% for m in materials %}
+        <option value="{{ m.name|e }}">{{ m.name }} ({{ m.unit }})</option>
+      {% endfor %}
+    `;
+    const keyInput = document.createElement('input'); keyInput.className='form-control form-control-sm bin-key'; keyInput.style.width='120px'; keyInput.placeholder='bin1'; keyInput.value = k;
+    const delBtn = document.createElement('button'); delBtn.className='btn btn-sm btn-outline-danger'; delBtn.textContent='删'; delBtn.onclick = ()=> row.remove();
+    row.appendChild(keyInput); row.append('→'); row.appendChild(select); row.appendChild(delBtn);
+    document.getElementById('binMap').appendChild(row);
+    if(v){ select.value = v; }
+  }
+
+  // 事件
+  document.getElementById('stepTypeMenu').addEventListener('click', (e)=>{
+    const a = e.target.closest('[data-type]'); if(!a) return;
+    e.preventDefault();
+    addStep({type: a.dataset.type, params:{} });
+    document.getElementById('stepsEmpty').style.display = 'none';
+  });
+  // 若未加载 Bootstrap JS 导致下拉无法展开，点击切换按钮时直接添加一个默认步骤
+  const stepToggle = document.querySelector('[data-bs-toggle="dropdown"]');
+  if(stepToggle){ stepToggle.addEventListener('click', (e)=>{
+    if(!(window.bootstrap && window.bootstrap.Dropdown)){
+      e.preventDefault(); addStep({type:'grind', params:{}}); document.getElementById('stepsEmpty').style.display = 'none';
+    }
+  }); }
+  document.getElementById('btnAddBin').onclick = ()=> addBin();
+  document.getElementById('btnValidate').onclick = async ()=>{
+    try{
+      const preview = { name: nameEl.value, version: verEl.value || initialVersion, steps: collect().steps, bin_mapping: collect().bin_mapping, applicable_models: collect().applicable_models };
+      await runSchemaValidate(preview, true);
+    }catch(e){ err.textContent = e.message || String(e); err.classList.add('text-danger'); err.classList.remove('text-success'); }
+  };
+  document.getElementById('btnSave').onclick = async ()=>{
+  const data = collect();
+  await requireValidBeforeSubmit();
+    const body = { name: nameEl.value, description: descEl.value, version: verEl.value || initialVersion, steps: data.steps, bin_mapping_schema: data.bin_mapping, applicable_models: data.applicable_models, metadata: data.meta, status:'draft' };
+    await fetch('/api/recipes/{{ recipe.id }}', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    alert('已保存');
+  };
+  document.getElementById('btnPublish').onclick = async ()=>{
+    const data = collect();
+  await requireValidBeforeSubmit();
+    const currentVersion = initialVersion;
+    const targetVersion = verEl.value || currentVersion;
+    const name = nameEl.value;
+    const savingDraftBody = { name, description: descEl.value, version: targetVersion, steps: data.steps, bin_mapping_schema: data.bin_mapping, applicable_models: data.applicable_models, metadata: data.meta, status:'draft' };
+    // 若版本号变化，则创建新版本并发布
+    if(targetVersion !== currentVersion){
+      if(!confirm('将以新版本 '+targetVersion+' 另存为一条记录并发布，是否继续？')) return;
+      const createRes = await fetch('/api/recipes', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(savingDraftBody)});
+      const created = await createRes.json();
+      const newId = created.recipe_id;
+      const pubRes = await fetch(`/api/recipes/${newId}/publish`, {method:'POST'});
+      const j = await pubRes.json();
+      alert('已发布新版本，包ID：'+j.package_id);
+      window.location.href = `/recipes/${newId}/edit`;
+      return;
+    }
+    // 否则保存当前并发布
+    await fetch('/api/recipes/{{ recipe.id }}', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(savingDraftBody)});
+    const r = await fetch('/api/recipes/{{ recipe.id }}/publish', {method:'POST'}); const j = await r.json();
+    alert('已发布，包ID：'+j.package_id);
+  };
+
+  // 初始渲染
+  // 预选机型
+  const initModels = init.applicable_models||[];
+  [...modelsSelect.options].forEach(opt=>{ if(initModels.includes(opt.value)) opt.selected = true; });
+  renderSteps(); renderBins(); refreshPreview();
+
+  // 通用 Schema 校验函数（使用 Ajv）
+  async function runSchemaValidate(previewObj, showToast){
+    const schema = await (await fetch('/api/recipes/schema')).json();
+    // Ajv 可能异步加载，等待就绪
+    await waitForAjv();
+    if(window.ajv && window.ajv.Ajv){
+      const ajv = new window.ajv.Ajv({allErrors:true, strict:false});
+      const validate = ajv.compile(schema);
+      const valid = validate(previewObj);
+      if(valid){ if(showToast){ err.textContent = '校验通过'; err.classList.remove('text-danger'); err.classList.add('text-success'); } return true; }
+      const lines = (validate.errors||[]).map(e=>`• ${e.instancePath||'/'} ${e.message}`);
+      err.innerHTML = lines.join('\n'); err.classList.add('text-danger'); err.classList.remove('text-success');
+      if(showToast) return false;
+    }else{
+      // 退化校验：至少包含 name 与 steps，且每步有 type
+      if(!previewObj.name) throw new Error('name 不能为空');
+      if(!Array.isArray(previewObj.steps) || previewObj.steps.length===0) throw new Error('至少包含一个步骤');
+      previewObj.steps.forEach((s,i)=>{ if(!s.type) throw new Error('步骤'+(i+1)+'缺少 type'); });
+      if(showToast){ err.textContent = '校验通过(简化)'; err.classList.remove('text-danger'); err.classList.add('text-success'); }
+      return true;
+    }
+  }
+  function waitForAjv(){
+    return new Promise(resolve=>{
+      if(window.ajv && window.ajv.Ajv) return resolve();
+      const iv = setInterval(()=>{ if(window.ajv && window.ajv.Ajv){ clearInterval(iv); resolve(); } }, 100);
+      setTimeout(()=>{ clearInterval(iv); resolve(); }, 3000);
+    });
+  }
+
+  async function requireValidBeforeSubmit(){
+    // 基础校验：名称必填
+    if(!nameEl.value || !nameEl.value.trim()){
+      err.textContent = '名称不能为空'; err.classList.add('text-danger'); err.classList.remove('text-success');
+      throw new Error('invalid');
+    }
+    // 参数范围校验
+    const c = collect();
+    c.steps.forEach((s,i)=>{
+      const spec = fieldsFor(s.type);
+      spec.forEach(f=>{
+        const v = s.params[f.key];
+        if(v === undefined || v === null || v === ''){ throw new Error(`步骤${i+1} 缺少参数 ${f.key}`); }
+        if(typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`步骤${i+1} 参数 ${f.key} 非数字`);
+        if(v < f.min || v > f.max) throw new Error(`步骤${i+1} 参数 ${f.key} 超出范围(${f.min}~${f.max})`);
+      });
+    });
+    const preview = { name: nameEl.value, version: verEl.value || initialVersion, steps: c.steps, bin_mapping: c.bin_mapping, applicable_models: c.applicable_models };
+    const ok = await runSchemaValidate(preview, true);
+    if(ok !== true) throw new Error('未通过校验');
+  }
+</script>
+
+<div class="mt-3 d-flex gap-2">
+  <a class="btn btn-outline-secondary" href="/recipes">取消</a>
+  <button class="btn btn-outline-primary" id="btnSaveFooter">保存草稿</button>
+  <button class="btn btn-primary" id="btnPublishFooter">发布配方</button>
+</div>
+<script>
+  // 底部按钮复用顶部逻辑
+  document.getElementById('btnSaveFooter').onclick = ()=> document.getElementById('btnSave').click();
+  document.getElementById('btnPublishFooter').onclick = ()=> document.getElementById('btnPublish').click();
+</script>
+{% endblock %}

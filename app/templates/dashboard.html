@@ -84,9 +84,27 @@
     <div class="card"><div class="card-header">故障分布</div><div class="card-body"><canvas id="pieFault"></canvas></div></div>
   </div>
   <div class="col-md-6">
-    <div class="card"><div class="card-header">物料告警 Top5</div><div class="card-body">
-      <ul id="alertList" class="list-group list-group-flush"></ul>
-    </div></div>
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>物料风险</span>
+        <div class="d-flex gap-2 align-items-center small">
+          <span class="badge rounded-pill text-bg-danger">告警 <span id="badgeAlert">0</span></span>
+          <span class="badge rounded-pill text-bg-warning">近阈值 <span id="badgeNear">0</span></span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="fw-semibold mb-1">告警 Top5</div>
+            <ul id="alertList" class="list-group list-group-flush"></ul>
+          </div>
+          <div class="col-12">
+            <div class="fw-semibold mt-2 mb-1">即将告警 Top5</div>
+            <ul id="nearList" class="list-group list-group-flush"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -154,12 +172,37 @@
     if(pieChart) pieChart.destroy();
     pieChart = new Chart(document.getElementById('pieFault'), {type:'pie', data:{labels:data.faults_pie.labels, datasets:[{data:data.faults_pie.data, backgroundColor:['#ffd166','#ef476f','#118ab2','#06d6a0','#073b4c']} ]}, options:{animation:{duration:700}}});
 
-    // Materials alerts
+    // Materials alerts & near
+    qs('#badgeAlert').textContent = (data.materials_alert_stats?.warning || 0) + (data.materials_alert_stats?.critical || 0);
+    qs('#badgeNear').textContent = (data.materials_alert_stats?.near || 0);
+
+    const renderItem = (x, type) => {
+      const li = document.createElement('li');
+      const badgeCls = type==='near' ? 'bg-warning text-dark' : (x.severity==='critical' ? 'bg-danger' : 'bg-warning text-dark');
+      const percent = Number(x.percent ?? 0);
+      const name = x.material_name || ('材料'+x.material_id);
+      const link = `/devices/${encodeURIComponent(x.device_no)}`;
+      const stockPct = x.stock_percent==null? null : Number(x.stock_percent);
+    const capStr = `${Number(x.capacity||0).toFixed(1)}${x.unit||''}`;
+      const stock = (stockPct==null? '' : `<small class="text-muted ms-2">库存占比 ${stockPct.toFixed(1)}%</small>`);
+      const thresholdLabel = type==='near'
+        ? `超阈 +${(percent-100).toFixed(1)}%`
+        : (percent>=100 ? `超阈 +${(percent-100).toFixed(1)}%` : `低于阈值 ${(100-percent).toFixed(1)}%`);
+      const remainStr = `${Number(x.remain).toFixed(1)}${x.unit||''}`;
+      const thStr = `${Number(x.threshold).toFixed(1)}${x.unit||''}`;
+      li.className = 'list-group-item d-flex justify-content-between align-items-center';
+    li.innerHTML = `<div class="text-truncate" style="max-width:70%"><a href="${link}">${x.device_no}</a> - ${name} <small class="text-muted">(最大 ${capStr} / 告警线 ${thStr} / 余 ${remainStr})</small>${stock}</div><span class="badge ${badgeCls}">${thresholdLabel}</span>`;
+      return li;
+    };
     const list = qs('#alertList'); list.innerHTML='';
-    data.materials_alert_top5.forEach(x=>{ const li=document.createElement('li'); li.className='list-group-item d-flex justify-content-between align-items-center'; li.innerHTML=`<span>${x.device_no} - 材料${x.material_id}</span><span class="badge bg-danger">${x.percent}%</span>`; list.appendChild(li); });
+    (data.materials_alert_top5||[]).forEach(x=> list.appendChild(renderItem(x,'alert')));
+    const nlist = qs('#nearList'); nlist.innerHTML='';
+    (data.materials_near_top5||[]).forEach(x=> nlist.appendChild(renderItem(x,'near')));
   }
 
   // 初始：默认近 7 天
   setQuick(7); load();
+  // 自动刷新，确保与物料管理同步（60s）
+  setInterval(load, 60000);
 </script>
 {% endblock %}

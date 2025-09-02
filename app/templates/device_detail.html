@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>设备详情：{{ device.device_no }}</h3>
+<div class="mb-3">状态：{{ device.status }} | 固件：{{ device.firmware_version or '-' }}</div>
+<h5>最近订单</h5>
+<table class="table table-sm">
+  <thead><tr><th>ID</th><th>金额</th><th>状态</th><th>时间</th></tr></thead>
+  <tbody>
+    {% for o in recent_orders %}
+    <tr><td>{{ o.id }}</td><td>{{ o.price }}</td><td>{{ o.status }}</td><td>{{ o.created_at }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="card mt-3">
+  <div class="card-header">下发命令（示例）</div>
+  <div class="card-body">
+  <div id="deviceMeta" data-device-id="{{ device.id }}" data-device-no='{{ device.device_no }}'></div>
+    <form id="cmdForm" class="row g-2 align-items-center">
+      <div class="col-auto"><select class="form-select" name="command_type"><option value="reboot">重启</option><option value="open_door">开门</option></select></div>
+      <div class="col-auto"><button class="btn btn-primary" type="submit">下发</button></div>
+      <div class="col-auto"><button class="btn btn-outline-success" id="simOk" type="button">模拟成功回执</button></div>
+      <div id="cmdHint" class="text-muted mt-2">最新命令回执将显示在此。</div>
+    </form>
+  </div>
+</div>
+<script>
+  const meta = document.getElementById('deviceMeta');
+  const deviceId = parseInt(meta.dataset.deviceId);
+  const deviceNo = meta.dataset.deviceNo;
+  document.getElementById('cmdForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const command_type = form.get('command_type');
+    const resp = await fetch('/api/devices/commands', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ device_ids:[deviceId], command_type: command_type, payload:{} })
+    });
+    document.getElementById('cmdHint').textContent = '已下发: ' + (await resp.text());
+  });
+  document.getElementById('simOk').addEventListener('click', async () => {
+    const fakeId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+    await fetch(`/simulate/device/${encodeURIComponent(deviceNo)}/command_result`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({command_id: fakeId, success:true})});
+    document.getElementById('cmdHint').textContent = '已模拟成功回执';
+  });
+</script>
+{% endblock %}

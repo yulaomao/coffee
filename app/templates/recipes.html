@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>配方制作</h3>
+<button class="btn btn-success" id="build">生成配方包</button>
+<script>
+  document.getElementById('build').addEventListener('click', async ()=>{
+    const resp = await fetch('/api/recipes/package', { method:'POST' });
+    alert(await resp.text());
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0"><i class="bi bi-speedometer"></i> 仪表盘</h3>
+  <div class="d-flex gap-2 align-items-center">
+    <select id="merchantSelect" class="form-select form-select-sm" style="width:160px">
+      <option value="">全部商户</option>
+      {% for m in merchants %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+    </select>
+    <div class="btn-group">
+      <button class="btn btn-sm btn-outline-secondary" data-range="7">近7天</button>
+      <button class="btn btn-sm btn-outline-secondary" data-range="30">近30天</button>
+    </div>
+    <input type="date" id="fromDate" class="form-control form-control-sm" style="width:150px">
+    <input type="date" id="toDate" class="form-control form-control-sm" style="width:150px">
+    <button id="applyRange" class="btn btn-sm btn-primary">应用</button>
+  </div>
+  </div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card kpi"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="text-muted small">设备总数</div>
+          <div id="kpiDevices" class="fs-4 fw-bold">{{ device_count }}</div>
+        </div>
+        <i class="bi bi-hdd-network fs-2 text-primary"></i>
+      </div>
+      <div class="kpi-hover small text-muted">设备数同比与环比在示例中不计算</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card kpi"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="text-muted small">在线率</div>
+          <div class="d-flex align-items-end gap-2"><span id="kpiOnline" class="fs-4 fw-bold">--%</span><small class="text-success" id="kpiOnlineMini"></small></div>
+        </div>
+        <i class="bi bi-wifi fs-2 text-success"></i>
+      </div>
+      <div class="kpi-hover small text-muted">悬停显示：取时间范围最后一日</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card kpi"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="text-muted small">今日销量</div>
+          <div id="kpiSales" class="fs-4 fw-bold">{{ order_today }}</div>
+        </div>
+        <i class="bi bi-cart-check fs-2 text-warning"></i>
+      </div>
+      <div class="kpi-hover small text-muted">同比：<span id="kpiSalesYoy">--</span></div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card kpi"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="text-muted small">今日营收</div>
+          <div id="kpiRevenue" class="fs-4 fw-bold">￥{{ revenue_today }}</div>
+        </div>
+        <i class="bi bi-currency-yen fs-2 text-danger"></i>
+      </div>
+      <div class="kpi-hover small text-muted">环比：<span id="kpiRevenueMom">--</span></div>
+    </div></div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card"><div class="card-header d-flex justify-content-between align-items-center">
+      <span>在线率 / 活跃设备</span>
+      <button class="btn btn-sm btn-outline-secondary" id="exportLine">导出 PNG</button>
+    </div><div class="card-body"><canvas id="lineOnline"></canvas></div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card"><div class="card-header d-flex justify-content-between align-items-center">
+      <span>每天销量</span>
+      <button class="btn btn-sm btn-outline-secondary" id="exportBar">导出 PNG</button>
+    </div><div class="card-body"><canvas id="barSales"></canvas></div></div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card"><div class="card-header">故障分布</div><div class="card-body"><canvas id="pieFault"></canvas></div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card"><div class="card-header">物料告警 Top5</div><div class="card-body">
+      <ul id="alertList" class="list-group list-group-flush"></ul>
+    </div></div>
+  </div>
+</div>
+
+<style>
+  .kpi{transition:transform .15s ease, box-shadow .15s ease}
+  .kpi:hover{transform: translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.12)}
+  .kpi .kpi-hover{opacity:0; transition: opacity .15s}
+  .kpi:hover .kpi-hover{opacity:1}
+</style>
+
+<script>
+  const fmtCNY = v => '￥' + (v||0).toFixed ? (v).toFixed(2) : Number(v||0).toFixed(2);
+  const qs = (sel)=>document.querySelector(sel);
+  const rangeBtns = document.querySelectorAll('[data-range]');
+  const fromI = qs('#fromDate'), toI = qs('#toDate');
+  const merchSel = qs('#merchantSelect');
+
+  function setQuick(days){
+    const to = new Date();
+    const from = new Date(to.getTime() - (days-1)*24*3600*1000);
+    fromI.value = from.toISOString().slice(0,10);
+    toI.value = to.toISOString().slice(0,10);
+  }
+  rangeBtns.forEach(b=> b.addEventListener('click', ()=>{ setQuick(parseInt(b.dataset.range)); load(); }));
+  qs('#applyRange').addEventListener('click', load);
+
+  let lineChart, barChart, pieChart;
+  async function load(){
+    const params = new URLSearchParams();
+    if(fromI.value) params.set('from', fromI.value);
+    if(toI.value) params.set('to', toI.value);
+    if(merchSel.value) params.set('merchant_id', merchSel.value);
+    const res = await fetch('/api/dashboard/summary_public?' + params.toString());
+    const data = await res.json();
+    // KPIs
+    qs('#kpiDevices').textContent = data.kpis.device_total;
+    qs('#kpiOnline').textContent = (data.kpis.online_rate||0)+'%';
+    qs('#kpiSales').textContent = data.kpis.sales_today;
+    qs('#kpiRevenue').textContent = fmtCNY(data.kpis.revenue_today||0);
+    qs('#kpiSalesYoy').textContent = data.kpis.changes.sales_yoy==null?'--':(data.kpis.changes.sales_yoy+'%');
+    qs('#kpiRevenueMom').textContent = data.kpis.changes.revenue_mom==null?'--':(data.kpis.changes.revenue_mom+'%');
+
+    // Line (online rate + active devices)
+    const lineCtx = document.getElementById('lineOnline');
+    const lineData = {
+      labels: data.series.dates,
+      datasets: [
+        {type:'line', label:'在线率 %', data: data.series.online_rate, borderColor:'#6f4e37', backgroundColor:'rgba(111,78,55,.2)', tension:.3, yAxisID:'y1'},
+        {type:'bar', label:'活跃设备', data: data.series.active_devices, backgroundColor:'rgba(212,163,115,.6)', borderRadius:6, yAxisID:'y'}
+      ]
+    };
+    if(lineChart) lineChart.destroy();
+    lineChart = new Chart(lineCtx, {type:'bar', data: lineData, options:{responsive:true, animation:{duration:700}, scales:{y:{beginAtZero:true}, y1:{position:'right', beginAtZero:true, ticks:{callback:v=>v+'%'}}}, plugins:{legend:{display:true}}}});
+    // Export
+    document.getElementById('exportLine').onclick = ()=>{ const a=document.createElement('a'); a.href=lineChart.toBase64Image(); a.download='online.png'; a.click(); };
+
+    // Bar (daily sales) with gradient
+    const barCtx = document.getElementById('barSales').getContext('2d');
+    const grad = barCtx.createLinearGradient(0,0,0,240); grad.addColorStop(0,'rgba(212,163,115,0.9)'); grad.addColorStop(1,'rgba(212,163,115,0.2)');
+    if(barChart) barChart.destroy();
+    barChart = new Chart(barCtx, {type:'bar', data:{labels:data.series.dates, datasets:[{label:'销量', data:data.series.daily_sales, backgroundColor:grad, borderRadius:6}]}, options:{responsive:true, animation:{duration:700}, plugins:{legend:{display:true}}}});
+    document.getElementById('exportBar').onclick = ()=>{ const a=document.createElement('a'); a.href=barChart.toBase64Image(); a.download='sales.png'; a.click(); };
+
+    // Pie faults
+    if(pieChart) pieChart.destroy();
+    pieChart = new Chart(document.getElementById('pieFault'), {type:'pie', data:{labels:data.faults_pie.labels, datasets:[{data:data.faults_pie.data, backgroundColor:['#ffd166','#ef476f','#118ab2','#06d6a0','#073b4c']} ]}, options:{animation:{duration:700}}});
+
+    // Materials alerts
+    const list = qs('#alertList'); list.innerHTML='';
+    data.materials_alert_top5.forEach(x=>{ const li=document.createElement('li'); li.className='list-group-item d-flex justify-content-between align-items-center'; li.innerHTML=`<span>${x.device_no} - 材料${x.material_id}</span><span class="badge bg-danger">${x.percent}%</span>`; list.appendChild(li); });
+  }
+
+  // 初始：默认近 7 天
+  setQuick(7); load();
+</script>
+{% endblock %}

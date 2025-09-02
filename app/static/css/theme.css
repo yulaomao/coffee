@@ -1,0 +1,19 @@
+:root{
+  --primary:#6f4e37; /* coffee brown */
+  --accent:#d4a373;  /* latte */
+  --success:#2ca58d;
+  --danger:#d9534f;
+  --bg:#f8f5f2;
+  --card:#ffffff;
+  --text:#222;
+}
+:root.dark{
+  --bg:#141414;
+  --card:#1f1f1f;
+  --text:#eee;
+}
+body{background:var(--bg); color:var(--text);} 
+.card{border:none; border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,.08);} 
+.btn-primary{background:var(--primary); border-color:var(--primary);} 
+.navbar{background:var(--primary)!important;}
+.table thead th{background:#f3f3f3;}

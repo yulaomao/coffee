@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h3 class="m-0">故障列表</h3>
+  <a class="btn btn-outline-secondary" href="/api/faults?format=csv">导出 CSV</a>
+  </div>
+<table class="table table-striped table-sm">
+  <thead><tr><th>ID</th><th>设备</th><th>级别</th><th>代码</th><th>消息</th><th>时间</th></tr></thead>
+  <tbody>
+    {% for f in faults %}
+    <tr><td>{{ f.id }}</td><td>{{ f.device_id }}</td><td>{{ f.level }}</td><td>{{ f.code }}</td><td>{{ f.message }}</td><td>{{ f.created_at }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

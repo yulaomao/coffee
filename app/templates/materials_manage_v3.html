@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+{% block title %}物料管理（新版）{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-box-seam"></i> 物料管理（新版）</h3>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/materials">旧版告警视图</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xxl-4">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-boxes"></i> 物料字典</span>
+          <div class="d-flex gap-2">
+            <button id="btnNew" class="btn btn-primary btn-sm">新增</button>
+            <label class="btn btn-outline-secondary btn-sm mb-0">导入CSV<input type="file" id="csvFile" accept=".csv" hidden></label>
+            <a class="btn btn-outline-secondary btn-sm" href="/api/material_catalog/export">导出CSV</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row g-2 mb-2">
+            <div class="col"><input id="q" class="form-control form-control-sm" placeholder="关键字/编码"></div>
+            <div class="col-auto"><button id="btnSearch" class="btn btn-sm btn-secondary">搜索</button></div>
+          </div>
+          <div class="table-responsive" style="max-height:420px; overflow:auto">
+            <table class="table table-sm align-middle" id="tblMat">
+              <thead><tr><th>Code</th><th>名称</th><th>分类</th><th>单位</th><th>默认容量</th><th>操作</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xxl-5">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-grid-3x3-gap"></i> 设备料盒</span>
+          <div class="d-flex align-items-center gap-2">
+            <select id="devSel" class="form-select form-select-sm" style="min-width:200px">
+              {% for d in devices %}<option value="{{ d.id }}">{{ d.device_no }}</option>{% endfor %}
+            </select>
+            <button id="btnInit" class="btn btn-sm btn-outline-primary">初始化</button>
+            <a class="btn btn-sm btn-outline-secondary" href="/devices/bins/bulk">批量绑定</a>
+            <button id="btnExport" class="btn btn-sm btn-outline-secondary">导出</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive" style="max-height:420px; overflow:auto">
+            <table class="table table-sm align-middle" id="tblBin">
+              <thead><tr><th>Bin</th><th>物料</th><th>单位</th><th>容量</th><th>余量</th><th>%</th><th>操作</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xxl-3">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-bell"></i> 告警</span>
+          <div class="d-flex gap-2">
+            <select id="f_sev" class="form-select form-select-sm" style="min-width:120px">
+              <option value="">全部状态</option>
+              <option value="critical">严重</option>
+              <option value="near">接近</option>
+              <option value="normal">正常</option>
+            </select>
+            <button id="btnAlertQuery" class="btn btn-sm btn-secondary">刷新</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="mb-2">
+            <span id="statCritical" class="badge bg-danger me-2">critical: 0</span>
+            <span id="statNear" class="badge bg-warning text-dark me-2">near: 0</span>
+            <span id="statNormal" class="badge bg-success">normal: 0</span>
+          </div>
+          <div class="table-responsive" style="max-height:360px; overflow:auto">
+            <table class="table table-sm" id="tblAlerts">
+              <thead><tr><th>设备</th><th>Bin</th><th>物料</th><th>%</th><th>状态</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑物料弹窗 -->
+<div class="modal" tabindex="-1" id="matModal"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">物料</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mb-2"><label class="form-label">编码</label><input id="f_code" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">名称</label><input id="f_name" class="form-control" required></div>
+    <div class="mb-2"><label class="form-label">分类</label><input id="f_cat" class="form-control" placeholder="bean/milk/syrup/cup/accessory"></div>
+    <div class="mb-2"><label class="form-label">单位</label><input id="f_unit" class="form-control" placeholder="g/ml/pcs"></div>
+    <div class="mb-2"><label class="form-label">默认容量</label><input id="f_cap" type="number" step="0.1" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">描述</label><textarea id="f_desc" class="form-control"></textarea></div>
+    <div class="form-check"><input id="f_active" class="form-check-input" type="checkbox" checked><label class="form-check-label">启用</label></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button id="btnSave" class="btn btn-primary">保存</button></div>
+</div></div></div>
+
+<!-- 绑定弹窗 -->
+<div class="modal" tabindex="-1" id="bindModal"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">绑定物料</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mb-2"><label class="form-label">物料编码或ID</label><input id="mCode" class="form-control" placeholder="material_code 或 material_id"></div>
+    <div class="form-check"><input id="mSync" class="form-check-input" type="checkbox"><label class="form-check-label">立即下发到设备</label></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button id="btnBindSubmit" class="btn btn-primary">绑定</button></div>
+</div></div></div>
+
+<script>
+const qs = s=>document.querySelector(s);
+async function apiFetch(url, opts={}){
+  const r = await fetch(url, {credentials:'include', headers:{'Content-Type':'application/json'}, ...opts});
+  if(!r.ok){
+    let msg = '';
+    try{ const j = await r.json(); msg = j.message||j.msg||JSON.stringify(j); }catch(e){ msg = r.statusText; }
+    if(r.status===401){ alert('需要登录'); window.location='/login'; throw new Error('unauthorized'); }
+    alert('操作失败: '+msg); throw new Error(msg);
+  }
+  return r.json();
+}
+
+// ------- 物料字典 -------
+const matModal = new bootstrap.Modal('#matModal'); let editingId=null;
+async function loadMat(){
+  const p = new URLSearchParams(); if(qs('#q').value) p.set('q',qs('#q').value);
+  const j = await apiFetch('/api/material_catalog?'+p.toString());
+  const tb = qs('#tblMat tbody'); tb.innerHTML='';
+  (j.items||[]).forEach(it=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${it.code||''}</td><td>${it.name}</td><td>${it.category||''}</td><td>${it.unit||''}</td><td>${it.default_capacity??''}</td>
+    <td><button class='btn btn-sm btn-outline-primary me-1' data-act='edit'>编辑</button><button class='btn btn-sm btn-outline-danger' data-act='del'>删除</button></td>`;
+    tr.querySelector('[data-act=edit]').onclick=()=>{ editingId=it.id; qs('#f_code').value=it.code||''; qs('#f_name').value=it.name; qs('#f_cat').value=it.category||''; qs('#f_unit').value=it.unit||''; qs('#f_cap').value=it.default_capacity??''; qs('#f_desc').value=it.description||''; qs('#f_active').checked=!!it.is_active; matModal.show(); };
+    tr.querySelector('[data-act=del]').onclick=async()=>{ if(!confirm('确认删除?'))return; await apiFetch('/api/material_catalog/'+it.id,{method:'DELETE'}); loadMat(); };
+    tb.appendChild(tr);
+  });
+}
+qs('#btnSearch').onclick=loadMat;
+qs('#btnNew').onclick=()=>{ editingId=null; qs('#f_code').value=''; qs('#f_name').value=''; qs('#f_cat').value=''; qs('#f_unit').value='g'; qs('#f_cap').value=''; qs('#f_desc').value=''; qs('#f_active').checked=true; matModal.show(); };
+qs('#btnSave').onclick=async()=>{
+  const body={code:qs('#f_code').value||null, name:qs('#f_name').value, category:qs('#f_cat').value||null, unit:qs('#f_unit').value||'g', default_capacity:qs('#f_cap').value?Number(qs('#f_cap').value):null, description:qs('#f_desc').value||null, is_active:qs('#f_active').checked};
+  if(!body.name){ alert('名称必填'); return; }
+  if(editingId){ await apiFetch('/api/material_catalog/'+editingId,{method:'PUT', body:JSON.stringify(body)}); }
+  else { await apiFetch('/api/material_catalog',{method:'POST', body:JSON.stringify(body)}); }
+  matModal.hide(); loadMat();
+};
+qs('#csvFile').addEventListener('change', async (e)=>{ const f=e.target.files[0]; if(!f) return; const fd=new FormData(); fd.append('file', f); const r=await fetch('/api/material_catalog/import',{method:'POST', body:fd, credentials:'include'}); const j=await r.json(); alert('导入完成: '+JSON.stringify(j.data||j)); loadMat(); });
+
+// ------- 设备料盒 -------
+const bindModal = new bootstrap.Modal('#bindModal'); let curIdx=null;
+async function loadBins(){ const deviceId = qs('#devSel').value; const j=await apiFetch(`/api/devices/${deviceId}/bins`); const rows = (j.data||j).sort((a,b)=>a.bin_index-b.bin_index); const tb=qs('#tblBin tbody'); tb.innerHTML='';
+  rows.forEach(x=>{
+    const tr=document.createElement('tr');
+    const cap = x.capacity??0, rem = x.remaining??0; const pct = cap>0? Math.round(rem/cap*100):0; const badge = (rem<=0? 'bg-danger': (pct<20? 'bg-warning text-dark': 'bg-secondary'));
+    tr.innerHTML = `<td>${x.bin_index}</td><td>${x.material? (x.material.name + (x.material.code? ' ['+x.material.code+']':'')) : '-'}</td><td>${x.unit||''}</td><td>${x.capacity??''}</td><td>${x.remaining??''}</td><td><span class="badge ${badge}">${pct}%</span></td>`+
+    `<td><button class='btn btn-sm btn-outline-primary me-1' data-act='bind'>绑定/更换</button>`+
+    `<button class='btn btn-sm btn-outline-secondary me-1' data-act='cap'>容量</button>`+
+    `<button class='btn btn-sm btn-outline-warning' data-act='sync'>下发</button></td>`;
+    tr.querySelector('[data-act=bind]').onclick=()=>{ curIdx=x.bin_index; qs('#mCode').value=''; qs('#mSync').checked=false; bindModal.show(); };
+    tr.querySelector('[data-act=cap]').onclick=async()=>{ const v=prompt('容量'); if(!v) return; const deviceId = qs('#devSel').value; await apiFetch(`/api/devices/${deviceId}/bins/${x.bin_index}/set_capacity`,{method:'PUT', body: JSON.stringify({capacity:Number(v)})}); loadBins(); };
+    tr.querySelector('[data-act=sync]').onclick=async()=>{ const deviceId = qs('#devSel').value; await apiFetch(`/api/devices/${deviceId}/bins/${x.bin_index}/downlink`,{method:'POST'}); alert('已触发下发'); };
+    tb.appendChild(tr);
+  });
+}
+qs('#btnInit').onclick=async()=>{ const deviceId = qs('#devSel').value; const cnt=prompt('料盒数量'); if(!cnt) return; const cap=prompt('默认容量(可空)'); const bins=[]; for(let i=1;i<=Number(cnt);i++){ bins.push({bin_index:i, capacity: cap? Number(cap): null}); } await apiFetch(`/api/devices/${deviceId}/bins`,{method:'POST', body: JSON.stringify({bins})}); loadBins(); };
+qs('#btnExport').onclick=()=>{ const deviceId = qs('#devSel').value; window.location = `/api/devices/bins/export?device_id=${deviceId}`; };
+qs('#devSel').addEventListener('change', loadBins);
+
+// ------- 告警 -------
+function sevBadge(sev){ if(sev==='critical') return '<span class="badge bg-danger">critical</span>'; if(sev==='near'||sev==='warning') return '<span class="badge bg-warning text-dark">near</span>'; return '<span class="badge bg-success">normal</span>'; }
+async function loadAlerts(){ const sev = qs('#f_sev').value; const qsx = new URLSearchParams(); if(sev) qsx.set('severity', sev); const j = await apiFetch('/api/materials/alerts?'+qsx.toString()); const tb = qs('#tblAlerts tbody'); tb.innerHTML='';
+  qs('#statCritical').innerText = 'critical: '+(j.stats.critical||0);
+  qs('#statNear').innerText = 'near: '+(j.stats.near||0);
+  qs('#statNormal').innerText = 'normal: '+(j.stats.normal||0);
+  j.items.forEach(it=>{
+    const pct = it.capacity>0? Math.round(it.remain/it.capacity*100):0;
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${it.device_no}</td><td>${it.bin_index}</td><td>${it.material||''}</td><td>${pct}%</td><td>${sevBadge(it.severity)}</td>`;
+    tb.appendChild(tr);
+  });
+}
+qs('#btnAlertQuery').onclick=loadAlerts;
+
+// 初始加载
+loadMat(); loadBins(); loadAlerts();
+setInterval(()=>{ try{ loadBins(); loadAlerts(); }catch(e){} }, 30000);
+</script>
+{% endblock %}
+
+

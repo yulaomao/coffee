@@ -1,78 +1,1207 @@
 {% extends 'base.html' %}
 {% block content %}
-<h3 class="mb-3"><i class="bi bi-archive"></i> 物料管理</h3>
-<div class="card mb-3">
-  <div class="card-body">
-    <form id="f" class="row g-2 align-items-end">
-      <div class="col-md-3"><label class="form-label">设备编号</label><input id="qDevice" class="form-control" placeholder="如 DEMO-1001"></div>
-      <div class="col-md-3"><label class="form-label">物料类型</label><input id="qType" class="form-control" placeholder="豆/奶粉/糖浆/纸杯/搅拌棒"></div>
-      <div class="col-md-3"><label class="form-label">物料名称</label><input id="qName" class="form-control" placeholder="如 咖啡豆"></div>
-      <div class="col-md-2"><label class="form-label">每页</label><select id="qPageSize" class="form-select"><option>20</option><option>50</option><option>100</option></select></div>
-      <div class="col-md-1"><button class="btn btn-primary w-100" type="submit">查询</button></div>
-    </form>
-    <div class="mt-2 d-flex gap-2">
-      <button class="btn btn-outline-secondary" id="btnExport"><i class="bi bi-download"></i> 导出筛选结果</button>
-      <a class="btn btn-outline-secondary" href="/api/materials/export">导出全部设备</a>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="mb-0"><i class="bi bi-archive-fill text-primary"></i> 物料管理中心</h3>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-success btn-sm" id="btnRefreshAll" title="刷新所有数据">
+      <i class="bi bi-arrow-clockwise"></i> 刷新
+    </button>
+    <div class="dropdown">
+      <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+        <i class="bi bi-gear"></i> 设置
+      </button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#" id="btnSettings">系统设置</a></li>
+        <li><a class="dropdown-item" href="#" id="btnHelp">使用帮助</a></li>
+      </ul>
     </div>
   </div>
+</div>
+
+<!-- 状态概览卡片 -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-left-primary h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="flex-grow-1">
+            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">总设备数</div>
+            <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalDevices">-</div>
+          </div>
+          <div class="text-primary">
+            <i class="bi bi-device-hdd fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-left-success h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="flex-grow-1">
+            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">物料种类</div>
+            <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalMaterials">-</div>
+          </div>
+          <div class="text-success">
+            <i class="bi bi-boxes fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-left-warning h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="flex-grow-1">
+            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">库存告警</div>
+            <div class="h5 mb-0 font-weight-bold text-gray-800" id="lowStockAlert">-</div>
+          </div>
+          <div class="text-warning">
+            <i class="bi bi-exclamation-triangle fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-left-info h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center">
+          <div class="flex-grow-1">
+            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">在线料盒</div>
+            <div class="h5 mb-0 font-weight-bold text-gray-800" id="onlineBins">-</div>
+          </div>
+          <div class="text-info">
+            <i class="bi bi-wifi fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 主要功能标签页 -->
+<ul class="nav nav-tabs nav-fill mb-4" id="materialTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="inventory-tab" data-bs-toggle="tab" data-bs-target="#inventory" type="button" role="tab">
+      <i class="bi bi-grid-3x3-gap me-1"></i> 库存总览
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="catalog-tab" data-bs-toggle="tab" data-bs-target="#catalog" type="button" role="tab">
+      <i class="bi bi-boxes me-1"></i> 物料字典
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="devices-tab" data-bs-toggle="tab" data-bs-target="#devices" type="button" role="tab">
+      <i class="bi bi-device-hdd me-1"></i> 设备料盒
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="operations-tab" data-bs-toggle="tab" data-bs-target="#operations" type="button" role="tab">
+      <i class="bi bi-tools me-1"></i> 批量操作
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content" id="materialTabsContent">
+  
+  <!-- 库存总览标签页 -->
+  <div class="tab-pane fade show active" id="inventory" role="tabpanel">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-table"></i> 库存总览</span>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-primary btn-sm" id="btnInventoryFilter">
+            <i class="bi bi-funnel"></i> 高级筛选
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="btnInventoryExport">
+            <i class="bi bi-download"></i> 导出数据
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <!-- 快速筛选 -->
+        <div class="row g-2 mb-3" id="quickFilters">
+          <div class="col-md-3">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" class="form-control" id="qDevice" placeholder="设备编号">
+            </div>
+          </div>
+          <div class="col-md-3">
+            <select class="form-select form-select-sm" id="qType">
+              <option value="">全部类型</option>
+              <option value="bean">咖啡豆</option>
+              <option value="milk">奶粉</option>
+              <option value="syrup">糖浆</option>
+              <option value="cup">杯子</option>
+              <option value="accessory">辅料</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select class="form-select form-select-sm" id="qStatus">
+              <option value="">全部状态</option>
+              <option value="normal">正常</option>
+              <option value="warning">告警</option>
+              <option value="critical">紧急</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select class="form-select form-select-sm" id="qPageSize">
+              <option value="20">20条/页</option>
+              <option value="50">50条/页</option>
+              <option value="100">100条/页</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-primary btn-sm w-100" id="btnInventorySearch">
+              <i class="bi bi-search"></i> 查询
+            </button>
+          </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="table-responsive">
+          <table class="table table-hover align-middle" id="inventoryTable">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 40px">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="selectAll">
+                  </div>
+                </th>
+                <th>设备编号</th>
+                <th>设备名称</th>
+                <th>料盒</th>
+                <th>物料</th>
+                <th>类型</th>
+                <th>当前库存</th>
+                <th>容量</th>
+                <th>余量%</th>
+                <th>状态</th>
+                <th>更新时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <!-- 分页 -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <div class="text-muted">
+            <span id="inventoryInfo">显示 0 - 0 条，共 0 条记录</span>
+          </div>
+          <nav>
+            <ul class="pagination pagination-sm" id="inventoryPagination"></ul>
+          </nav>
+        </div>
+      </div>
+    </div>
   </div>
 
-<div class="table-responsive">
-  <table class="table table-striped table-hover align-middle" id="tbl">
-    <thead><tr>
-      <th>设备编号</th><th>设备名称</th><th>料盒ID</th><th>物料名称</th><th>物料类型</th><th>当前余量</th><th>最大容量</th><th>剩余%</th><th>单位</th><th>上次同步</th>
-    </tr></thead>
-    <tbody></tbody>
-  </table>
+  <!-- 物料字典标签页 -->
+  <div class="tab-pane fade" id="catalog" role="tabpanel">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-boxes"></i> 物料字典管理</span>
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary btn-sm" id="btnNewMaterial">
+            <i class="bi bi-plus"></i> 新增物料
+          </button>
+          <label class="btn btn-outline-secondary btn-sm mb-0">
+            <i class="bi bi-upload"></i> 导入CSV
+            <input type="file" id="csvImport" accept=".csv" hidden>
+          </label>
+          <button class="btn btn-outline-secondary btn-sm" id="btnCatalogExport">
+            <i class="bi bi-download"></i> 导出CSV
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <!-- 搜索区域 -->
+        <div class="row g-2 mb-3">
+          <div class="col-md-4">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" class="form-control" id="catalogSearch" placeholder="搜索编码或名称">
+            </div>
+          </div>
+          <div class="col-md-3">
+            <select class="form-select form-select-sm" id="catalogCategory">
+              <option value="">全部分类</option>
+              <option value="bean">咖啡豆</option>
+              <option value="milk">奶粉</option>
+              <option value="syrup">糖浆</option>
+              <option value="cup">杯子</option>
+              <option value="accessory">辅料</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select class="form-select form-select-sm" id="catalogStatus">
+              <option value="">全部状态</option>
+              <option value="active">启用</option>
+              <option value="inactive">停用</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <button class="btn btn-primary btn-sm me-2" id="btnCatalogSearch">
+              <i class="bi bi-search"></i> 查询
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" id="btnCatalogReset">
+              <i class="bi bi-arrow-clockwise"></i> 重置
+            </button>
+          </div>
+        </div>
+
+        <!-- 物料列表 -->
+        <div class="table-responsive">
+          <table class="table table-hover align-middle" id="catalogTable">
+            <thead class="table-light">
+              <tr>
+                <th>编码</th>
+                <th>名称</th>
+                <th>分类</th>
+                <th>单位</th>
+                <th>默认容量</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设备料盒标签页 -->
+  <div class="tab-pane fade" id="devices" role="tabpanel">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-device-hdd"></i> 设备料盒管理</span>
+        <div class="d-flex gap-2 align-items-center">
+          <select class="form-select form-select-sm" id="deviceSelect" style="min-width: 200px">
+            <option value="">选择设备...</option>
+          </select>
+          <button class="btn btn-outline-primary btn-sm" id="btnInitDevice">
+            <i class="bi bi-plus-square"></i> 初始化
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="btnDeviceExport">
+            <i class="bi bi-download"></i> 导出
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row" id="deviceBinsContainer">
+          <div class="col-12 text-center text-muted py-5">
+            <i class="bi bi-device-hdd display-1"></i>
+            <p class="mt-3">请选择设备查看料盒信息</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量操作标签页 -->
+  <div class="tab-pane fade" id="operations" role="tabpanel">
+    <div class="card">
+      <div class="card-header">
+        <span><i class="bi bi-tools"></i> 批量操作</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-4">
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-upload text-primary"></i> 批量导入</h5>
+                <p class="card-text text-muted">支持批量导入物料字典、设备料盒绑定等数据</p>
+                <div class="d-grid gap-2">
+                  <label class="btn btn-outline-primary">
+                    <i class="bi bi-file-earmark-spreadsheet"></i> 物料字典导入
+                    <input type="file" hidden accept=".csv" id="bulkImportMaterials">
+                  </label>
+                  <label class="btn btn-outline-secondary">
+                    <i class="bi bi-diagram-3"></i> 料盒绑定导入
+                    <input type="file" hidden accept=".csv" id="bulkImportBindings">
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-download text-success"></i> 批量导出</h5>
+                <p class="card-text text-muted">支持按条件批量导出各类数据报表</p>
+                <div class="d-grid gap-2">
+                  <button class="btn btn-outline-success" id="bulkExportInventory">
+                    <i class="bi bi-table"></i> 库存总览导出
+                  </button>
+                  <button class="btn btn-outline-secondary" id="bulkExportMaterials">
+                    <i class="bi bi-boxes"></i> 物料字典导出
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="row g-4 mt-1">
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-arrows-move text-warning"></i> 批量更新</h5>
+                <p class="card-text text-muted">批量更新料盒容量、物料绑定等信息</p>
+                <div class="d-grid gap-2">
+                  <button class="btn btn-outline-warning" id="bulkUpdateCapacity">
+                    <i class="bi bi-speedometer2"></i> 批量设置容量
+                  </button>
+                  <button class="btn btn-outline-secondary" id="bulkUpdateBindings">
+                    <i class="bi bi-link-45deg"></i> 批量更换绑定
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-arrow-down-circle text-info"></i> 批量下发</h5>
+                <p class="card-text text-muted">批量向设备下发物料配置更新命令</p>
+                <div class="d-grid gap-2">
+                  <button class="btn btn-outline-info" id="bulkSyncToDevices">
+                    <i class="bi bi-cloud-download"></i> 批量同步到设备
+                  </button>
+                  <button class="btn btn-outline-secondary" id="bulkSyncSelected">
+                    <i class="bi bi-check2-square"></i> 同步选中项
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 物料编辑模态框 -->
+<div class="modal fade" id="materialModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">物料信息</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="materialForm">
+          <div class="mb-3">
+            <label class="form-label">编码</label>
+            <input type="text" class="form-control" id="materialCode" placeholder="物料编码（可选）">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">名称 <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="materialName" placeholder="物料名称" required>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label">分类</label>
+              <select class="form-select" id="materialCategory">
+                <option value="">请选择</option>
+                <option value="bean">咖啡豆</option>
+                <option value="milk">奶粉</option>
+                <option value="syrup">糖浆</option>
+                <option value="cup">杯子</option>
+                <option value="accessory">辅料</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">单位</label>
+              <input type="text" class="form-control" id="materialUnit" placeholder="g/ml/个" value="g">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">默认容量</label>
+            <input type="number" step="0.1" class="form-control" id="materialCapacity" placeholder="默认容量">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">描述</label>
+            <textarea class="form-control" id="materialDescription" rows="3" placeholder="物料描述（可选）"></textarea>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="materialActive" checked>
+            <label class="form-check-label">启用状态</label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="saveMaterial">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 料盒绑定模态框 -->
+<div class="modal fade" id="binBindModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">料盒绑定</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="binBindForm">
+          <div class="mb-3">
+            <label class="form-label">物料选择</label>
+            <select class="form-select" id="bindMaterialSelect">
+              <option value="">请选择物料</option>
+            </select>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="bindSyncToDevice">
+            <label class="form-check-label">立即同步到设备</label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="saveBinBind">绑定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 高级筛选模态框 -->
+<div class="modal fade" id="advancedFilterModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">高级筛选</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="advancedFilterForm">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">设备状态</label>
+              <select class="form-select" id="filterDeviceStatus">
+                <option value="">全部</option>
+                <option value="online">在线</option>
+                <option value="offline">离线</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">库存水平</label>
+              <select class="form-select" id="filterStockLevel">
+                <option value="">全部</option>
+                <option value="sufficient">充足(>80%)</option>
+                <option value="medium">中等(20-80%)</option>
+                <option value="low">偏低(<20%)</option>
+                <option value="empty">空(0%)</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">更新时间（从）</label>
+              <input type="datetime-local" class="form-control" id="filterDateFrom">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">更新时间（到）</label>
+              <input type="datetime-local" class="form-control" id="filterDateTo">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="clearAdvancedFilter">清除条件</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="applyAdvancedFilter">应用筛选</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-  let dt;
-  const $ = (s)=>document.querySelector(s);
-  function buildQuery(page=1){
-    const p = new URLSearchParams();
-    if($('#qDevice').value) p.set('device_id', $('#qDevice').value);
-    if($('#qType').value) p.set('type', $('#qType').value);
-    if($('#qName').value) p.set('name', $('#qName').value);
-    p.set('page', page); p.set('per_page', $('#qPageSize').value||'20');
-    return p.toString();
+// 全局变量
+let currentTab = 'inventory';
+let inventoryData = [];
+let catalogData = [];
+let selectedDeviceId = null;
+let editingMaterialId = null;
+let currentBindBin = null;
+
+// 工具函数
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+// 格式化数字
+function formatNumber(num, decimals = 2) {
+  if (num === null || num === undefined) return '-';
+  return Number(num).toFixed(decimals);
+}
+
+// 格式化日期
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  return dateStr.replace('T', ' ').slice(0, 19);
+}
+
+// 获取库存状态
+function getStockStatus(status) {
+  // 支持百分比数字或状态字符串
+  if (typeof status === 'string') {
+    switch (status) {
+      case 'empty': return { class: 'danger', text: '空' };
+      case 'low': return { class: 'warning', text: '低' };
+      case 'normal': return { class: 'success', text: '正常' };
+      default: return { class: 'secondary', text: '未知' };
+    }
+  } else {
+    // 向后兼容百分比
+    const percent = status || 0;
+    if (percent <= 0) return { class: 'danger', text: '空' };
+    if (percent < 20) return { class: 'warning', text: '低' };
+    if (percent < 80) return { class: 'info', text: '中' };
+    return { class: 'success', text: '充足' };
   }
-  async function load(page=1){
-    const res = await fetch('/api/materials?' + buildQuery(page));
-    const data = await res.json();
-    const tbody = document.querySelector('#tbl tbody'); tbody.innerHTML = '';
-    (data.items||[]).forEach(it=>{
-      const tr = document.createElement('tr');
-      const percent = it.percent||0; const red = (it.capacity>0 && percent < 20);
-      tr.innerHTML = `
-        <td>${it.device_no||''}</td>
-        <td>${it.device_name||''}</td>
-        <td>${it.bin_id}</td>
-        <td>${it.material_name||''}</td>
-        <td>${it.material_type||''}</td>
-        <td ${red?"class='text-danger fw-semibold'":''}>${(it.remain??0).toFixed(2)}</td>
-        <td>${(it.capacity??0).toFixed(2)}</td>
-        <td ${red?"class='text-danger fw-semibold'":''}>${(percent).toFixed(1)}</td>
-        <td>${it.unit||''}</td>
-        <td>${it.updated_at?it.updated_at.replace('T',' ').slice(0,19):''}</td>`;
-      tbody.appendChild(tr);
-    });
-    if(dt) dt.destroy();
-    dt = new DataTable('#tbl', {
-      pageLength: parseInt($('#qPageSize').value||'20'),
-      pagingType: 'simple_numbers',
-      dom: 't<"d-flex justify-content-between align-items-center mt-2"ip>',
-      language: {
-        paginate: { previous: '上一页', next: '下一页' },
-        info: '第 _PAGE_ / 共 _PAGES_ 页（共 _TOTAL_ 条）',
-        infoEmpty: '无记录',
-        zeroRecords: '无匹配记录'
+}
+
+// 获取分类中文名称
+function getCategoryName(category) {
+  const categoryMap = {
+    'bean': '咖啡豆',
+    'milk': '奶制品',
+    'syrup': '糖浆',
+    'cup': '杯子',
+    'accessory': '配件'
+  };
+  return categoryMap[category] || category;
+}
+
+// 显示加载状态
+function showLoading(element) {
+  if (element) {
+    element.innerHTML = '<div class="text-center py-3"><i class="bi bi-arrow-clockwise spin"></i> 加载中...</div>';
+  }
+}
+
+// 显示错误信息
+function showError(message) {
+  // 这里可以使用toast或其他方式显示错误
+  alert('错误: ' + message);
+}
+
+// 初始化函数
+async function init() {
+  try {
+    // 加载设备列表
+    await loadDeviceList();
+    // 加载概览数据
+    await loadOverview();
+    // 加载默认标签页数据
+    await loadInventoryData();
+    
+    // 绑定事件
+    bindEvents();
+    
+    console.log('材料管理系统初始化完成');
+  } catch (error) {
+    console.error('初始化失败:', error);
+    showError('系统初始化失败，请刷新页面重试');
+  }
+}
+
+// 加载概览数据
+async function loadOverview() {
+  try {
+    const response = await fetch('/api/materials/overview');
+    const result = await response.json();
+    
+    if (result.ok && result.data) {
+      const data = result.data;
+      $('#totalDevices').textContent = data.total_devices;
+      $('#totalMaterials').textContent = data.total_materials;
+      $('#lowStockAlert').textContent = data.low_stock_bins;
+      $('#onlineBins').textContent = data.online_bins;
+    } else {
+      console.error('加载概览数据失败:', result.message);
+      // 显示默认值
+      $('#totalDevices').textContent = '-';
+      $('#totalMaterials').textContent = '-';
+      $('#lowStockAlert').textContent = '-';
+      $('#onlineBins').textContent = '-';
+    }
+  } catch (error) {
+    console.error('加载概览数据失败:', error);
+    // 显示默认值
+    $('#totalDevices').textContent = '-';
+    $('#totalMaterials').textContent = '-';
+    $('#lowStockAlert').textContent = '-';
+    $('#onlineBins').textContent = '-';
+  }
+}
+
+// 加载设备列表
+async function loadDeviceList() {
+  try {
+    const response = await fetch('/api/devices?page=1&per_page=1000');
+    const result = await response.json();
+    
+    if (result.ok && result.data && result.data.items) {
+      const devices = result.data.items;
+      
+      const deviceSelect = $('#deviceSelect');
+      deviceSelect.innerHTML = '<option value="">选择设备...</option>';
+      devices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.id;
+        option.textContent = `${device.device_no} - ${device.model || ''}`;
+        deviceSelect.appendChild(option);
+      });
+    } else {
+      console.error('加载设备列表失败:', result.message);
+    }
+  } catch (error) {
+    console.error('加载设备列表失败:', error);
+  }
+}
+
+// 加载库存数据
+async function loadInventoryData() {
+  const tbody = $('#inventoryTable tbody');
+  showLoading(tbody);
+  
+  try {
+    const queryParams = buildInventoryQuery();
+    const response = await fetch('/api/materials/inventory?' + queryParams);
+    const result = await response.json();
+    
+    if (result.ok && result.data) {
+      inventoryData = result.data.items || [];
+      renderInventoryTable();
+      updateInventoryPagination(result.data);
+    } else {
+      console.error('加载库存数据失败:', result.message);
+      tbody.innerHTML = `<tr><td colspan="12" class="text-center text-danger">加载失败：${result.message || '请重试'}</td></tr>`;
+    }
+  } catch (error) {
+    console.error('加载库存数据失败:', error);
+    tbody.innerHTML = '<tr><td colspan="12" class="text-center text-danger">加载失败，请重试</td></tr>';
+  }
+}
+
+// 构建库存查询参数
+function buildInventoryQuery() {
+  const params = new URLSearchParams();
+  
+  const device = $('#qDevice').value;
+  const type = $('#qType').value;
+  const status = $('#qStatus').value;
+  const pageSize = $('#qPageSize').value;
+  
+  if (device) params.set('device_id', device);
+  if (type) params.set('type', type);
+  if (status) params.set('status', status);
+  params.set('per_page', pageSize || '20');
+  
+  return params.toString();
+}
+
+// 渲染库存表格
+function renderInventoryTable() {
+  const tbody = $('#inventoryTable tbody');
+  
+  if (!inventoryData.length) {
+    tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">暂无数据</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = inventoryData.map(item => {
+    const percent = item.percentage || 0;
+    const status = getStockStatus(item.stock_status);
+    
+    return `
+      <tr>
+        <td>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="${item.id}">
+          </div>
+        </td>
+        <td><code>${item.device_no || '-'}</code></td>
+        <td>${item.device_model || '-'}</td>
+        <td><span class="badge bg-light text-dark">Bin ${item.bin_index || '-'}</span></td>
+        <td>${item.material_name || '未绑定物料'}</td>
+        <td>
+          ${item.material_category ? `<span class="badge bg-secondary">${getCategoryName(item.material_category)}</span>` : '-'}
+        </td>
+        <td class="${percent < 20 ? 'text-danger fw-bold' : ''}">${formatNumber(item.remaining)} ${item.unit || ''}</td>
+        <td>${formatNumber(item.capacity)} ${item.unit || ''}</td>
+        <td>
+          <div class="progress" style="height: 6px;">
+            <div class="progress-bar bg-${status.class}" style="width: ${Math.max(percent, 2)}%"></div>
+          </div>
+          <small class="text-${status.class}">${formatNumber(percent, 1)}%</small>
+        </td>
+        <td><span class="badge bg-${status.class}">${status.text}</span></td>
+        <td><small class="text-muted">${formatDate(item.last_sync_at)}</small></td>
+        <td>
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-primary" onclick="editInventoryItem(${item.id})" title="编辑">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-outline-success" onclick="syncInventoryItem(${item.id})" title="同步">
+              <i class="bi bi-arrow-repeat"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// 更新库存分页
+function updateInventoryPagination(data) {
+  const info = $('#inventoryInfo');
+  const pagination = $('#inventoryPagination');
+  
+  // 更新信息显示
+  const total = data.total || 0;
+  const page = data.page || 1;
+  const perPage = data.per_page || 20;
+  const start = (page - 1) * perPage + 1;
+  const end = Math.min(page * perPage, total);
+  
+  info.textContent = `显示 ${start} - ${end} 条，共 ${total} 条记录`;
+  
+  // 这里可以添加分页控件的生成逻辑
+  pagination.innerHTML = ''; // 简化处理
+}
+
+// 加载物料字典数据
+async function loadCatalogData() {
+  const tbody = $('#catalogTable tbody');
+  showLoading(tbody);
+  
+  try {
+    const queryParams = buildCatalogQuery();
+    const response = await fetch('/api/material_catalog?' + queryParams);
+    const data = await response.json();
+    
+    catalogData = data.items || [];
+    renderCatalogTable();
+  } catch (error) {
+    console.error('加载物料字典失败:', error);
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">加载失败，请重试</td></tr>';
+  }
+}
+
+// 构建物料字典查询参数
+function buildCatalogQuery() {
+  const params = new URLSearchParams();
+  
+  const search = $('#catalogSearch').value;
+  const category = $('#catalogCategory').value;
+  const status = $('#catalogStatus').value;
+  
+  if (search) params.set('q', search);
+  if (category) params.set('category', category);
+  if (status) params.set('status', status);
+  
+  return params.toString();
+}
+
+// 渲染物料字典表格
+function renderCatalogTable() {
+  const tbody = $('#catalogTable tbody');
+  
+  if (!catalogData.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = catalogData.map(item => `
+    <tr>
+      <td><code>${item.code || '-'}</code></td>
+      <td>${item.name}</td>
+      <td>
+        ${item.category ? `<span class="badge bg-info">${item.category}</span>` : '-'}
+      </td>
+      <td>${item.unit || '-'}</td>
+      <td>${formatNumber(item.default_capacity)}</td>
+      <td>
+        <span class="badge bg-${item.is_active ? 'success' : 'secondary'}">
+          ${item.is_active ? '启用' : '停用'}
+        </span>
+      </td>
+      <td>
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-primary" onclick="editMaterial(${item.id})" title="编辑">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-outline-danger" onclick="deleteMaterial(${item.id})" title="删除">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// 绑定事件
+function bindEvents() {
+  // 标签页切换
+  $$('#materialTabs .nav-link').forEach(tab => {
+    tab.addEventListener('click', async (e) => {
+      const tabId = e.target.getAttribute('data-bs-target').substring(1);
+      currentTab = tabId;
+      
+      // 根据标签页加载对应数据
+      if (tabId === 'inventory') {
+        await loadInventoryData();
+      } else if (tabId === 'catalog') {
+        await loadCatalogData();
+      } else if (tabId === 'devices') {
+        // 设备标签页数据在设备选择时加载
       }
     });
+  });
+
+  // 库存查询
+  $('#btnInventorySearch').addEventListener('click', loadInventoryData);
+  
+  // 物料字典查询
+  $('#btnCatalogSearch').addEventListener('click', loadCatalogData);
+  
+  // 新增物料
+  $('#btnNewMaterial').addEventListener('click', () => {
+    editingMaterialId = null;
+    resetMaterialForm();
+    new bootstrap.Modal('#materialModal').show();
+  });
+  
+  // 保存物料
+  $('#saveMaterial').addEventListener('click', saveMaterial);
+  
+  // 设备选择
+  $('#deviceSelect').addEventListener('change', loadDeviceBins);
+  
+  // 全选checkbox
+  $('#selectAll').addEventListener('change', (e) => {
+    const checkboxes = $$('#inventoryTable tbody input[type="checkbox"]');
+    checkboxes.forEach(cb => cb.checked = e.target.checked);
+  });
+
+  // 刷新所有
+  $('#btnRefreshAll').addEventListener('click', () => {
+    loadOverview();
+    if (currentTab === 'inventory') {
+      loadInventoryData();
+    } else if (currentTab === 'catalog') {
+      loadCatalogData();
+    }
+  });
+
+  // 导出按钮
+  $('#btnInventoryExport').addEventListener('click', exportInventoryData);
+  $('#btnCatalogExport').addEventListener('click', exportCatalogData);
+  
+  // 高级筛选
+  $('#btnInventoryFilter').addEventListener('click', () => {
+    new bootstrap.Modal('#advancedFilterModal').show();
+  });
+}
+
+// 重置物料表单
+function resetMaterialForm() {
+  $('#materialCode').value = '';
+  $('#materialName').value = '';
+  $('#materialCategory').value = '';
+  $('#materialUnit').value = 'g';
+  $('#materialCapacity').value = '';
+  $('#materialDescription').value = '';
+  $('#materialActive').checked = true;
+}
+
+// 保存物料
+async function saveMaterial() {
+  try {
+    const formData = {
+      code: $('#materialCode').value || null,
+      name: $('#materialName').value,
+      category: $('#materialCategory').value || null,
+      unit: $('#materialUnit').value || 'g',
+      default_capacity: $('#materialCapacity').value ? Number($('#materialCapacity').value) : null,
+      description: $('#materialDescription').value || null,
+      is_active: $('#materialActive').checked
+    };
+    
+    if (!formData.name) {
+      alert('物料名称不能为空');
+      return;
+    }
+    
+    const url = editingMaterialId 
+      ? `/api/material_catalog/${editingMaterialId}`
+      : '/api/material_catalog';
+    const method = editingMaterialId ? 'PUT' : 'POST';
+    
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+    
+    if (response.ok) {
+      bootstrap.Modal.getInstance('#materialModal').hide();
+      await loadCatalogData();
+      // 可以显示成功提示
+    } else {
+      const error = await response.json();
+      alert('保存失败: ' + (error.message || '未知错误'));
+    }
+  } catch (error) {
+    console.error('保存物料失败:', error);
+    alert('保存失败，请重试');
   }
-  document.getElementById('f').addEventListener('submit', (e)=>{ e.preventDefault(); load(1); });
-  document.getElementById('qPageSize').addEventListener('change', ()=> load(1));
-  document.getElementById('btnExport').onclick = ()=>{ window.location = '/api/materials/export?' + buildQuery(1); };
-  load(1);
+}
+
+// 编辑物料
+function editMaterial(id) {
+  const material = catalogData.find(m => m.id === id);
+  if (!material) return;
+  
+  editingMaterialId = id;
+  $('#materialCode').value = material.code || '';
+  $('#materialName').value = material.name || '';
+  $('#materialCategory').value = material.category || '';
+  $('#materialUnit').value = material.unit || 'g';
+  $('#materialCapacity').value = material.default_capacity || '';
+  $('#materialDescription').value = material.description || '';
+  $('#materialActive').checked = !!material.is_active;
+  
+  new bootstrap.Modal('#materialModal').show();
+}
+
+// 删除物料
+async function deleteMaterial(id) {
+  if (!confirm('确定要删除这个物料吗？此操作不可恢复。')) return;
+  
+  try {
+    const response = await fetch(`/api/material_catalog/${id}`, {
+      method: 'DELETE'
+    });
+    
+    if (response.ok) {
+      await loadCatalogData();
+    } else {
+      alert('删除失败，请重试');
+    }
+  } catch (error) {
+    console.error('删除物料失败:', error);
+    alert('删除失败，请重试');
+  }
+}
+
+// 加载设备料盒
+async function loadDeviceBins() {
+  const deviceId = $('#deviceSelect').value;
+  const container = $('#deviceBinsContainer');
+  
+  if (!deviceId) {
+    container.innerHTML = `
+      <div class="col-12 text-center text-muted py-5">
+        <i class="bi bi-device-hdd display-1"></i>
+        <p class="mt-3">请选择设备查看料盒信息</p>
+      </div>
+    `;
+    return;
+  }
+  
+  selectedDeviceId = deviceId;
+  showLoading(container);
+  
+  try {
+    const response = await fetch(`/api/devices/${deviceId}/bins`);
+    const bins = await response.json();
+    
+    renderDeviceBins(bins);
+  } catch (error) {
+    console.error('加载设备料盒失败:', error);
+    container.innerHTML = '<div class="col-12 text-center text-danger">加载失败，请重试</div>';
+  }
+}
+
+// 渲染设备料盒
+function renderDeviceBins(bins) {
+  const container = $('#deviceBinsContainer');
+  
+  if (!bins.length) {
+    container.innerHTML = `
+      <div class="col-12 text-center text-muted py-5">
+        <i class="bi bi-inbox display-1"></i>
+        <p class="mt-3">该设备暂无料盒数据</p>
+        <button class="btn btn-outline-primary" onclick="initDeviceBins()">
+          <i class="bi bi-plus"></i> 初始化料盒
+        </button>
+      </div>
+    `;
+    return;
+  }
+  
+  // 按bin_index排序
+  bins.sort((a, b) => a.bin_index - b.bin_index);
+  
+  container.innerHTML = bins.map(bin => {
+    const percent = bin.remaining && bin.capacity ? (bin.remaining / bin.capacity * 100) : 0;
+    const status = getStockStatus(percent);
+    
+    return `
+      <div class="col-md-6 col-lg-4 mb-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <h6 class="card-title mb-0">
+                <span class="badge bg-primary">Bin ${bin.bin_index}</span>
+              </h6>
+              <span class="badge bg-${status.class}">${status.text}</span>
+            </div>
+            
+            <div class="mb-2">
+              <strong>物料：</strong>
+              ${bin.material ? 
+                `${bin.material.name}${bin.material.code ? ` [${bin.material.code}]` : ''}` : 
+                '<span class="text-muted">未绑定</span>'
+              }
+            </div>
+            
+            ${bin.capacity ? `
+              <div class="progress mb-2" style="height: 8px;">
+                <div class="progress-bar bg-${status.class}" style="width: ${Math.max(percent, 2)}%"></div>
+              </div>
+              <div class="d-flex justify-content-between text-sm">
+                <span>余量: ${formatNumber(bin.remaining)} ${bin.unit || 'g'}</span>
+                <span>容量: ${formatNumber(bin.capacity)} ${bin.unit || 'g'}</span>
+              </div>
+            ` : '<div class="text-muted">容量未设置</div>'}
+            
+            <div class="mt-3">
+              <div class="btn-group btn-group-sm w-100">
+                <button class="btn btn-outline-primary" onclick="bindMaterialToBin(${bin.bin_index})" title="绑定物料">
+                  <i class="bi bi-link-45deg"></i>
+                </button>
+                <button class="btn btn-outline-secondary" onclick="setCapacity(${bin.bin_index})" title="设置容量">
+                  <i class="bi bi-speedometer2"></i>
+                </button>
+                <button class="btn btn-outline-success" onclick="syncBin(${bin.bin_index})" title="同步">
+                  <i class="bi bi-arrow-repeat"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 导出数据功能
+function exportInventoryData() {
+  const queryParams = buildInventoryQuery();
+  window.location.href = '/api/materials/export?' + queryParams;
+}
+
+function exportCatalogData() {
+  window.location.href = '/api/material_catalog/export';
+}
+
+// 物料绑定到料盒
+function bindMaterialToBin(binIndex) {
+  currentBindBin = binIndex;
+  
+  // 加载物料选项
+  loadMaterialOptions();
+  
+  new bootstrap.Modal('#binBindModal').show();
+}
+
+// 加载物料选项
+async function loadMaterialOptions() {
+  try {
+    const response = await fetch('/api/material_catalog');
+    const data = await response.json();
+    
+    const select = $('#bindMaterialSelect');
+    select.innerHTML = '<option value="">请选择物料</option>';
+    
+    data.items.forEach(material => {
+      if (material.is_active) {
+        const option = document.createElement('option');
+        option.value = material.id;
+        option.textContent = `${material.name}${material.code ? ` [${material.code}]` : ''}`;
+        select.appendChild(option);
+      }
+    });
+  } catch (error) {
+    console.error('加载物料选项失败:', error);
+  }
+}
+
+// 其他功能函数...
+function editInventoryItem(id) {
+  console.log('编辑库存项:', id);
+  // 实现编辑功能
+}
+
+function syncInventoryItem(id) {
+  console.log('同步库存项:', id);
+  // 实现同步功能
+}
+
+function setCapacity(binIndex) {
+  const capacity = prompt('请输入容量:');
+  if (capacity) {
+    // 实现设置容量功能
+    console.log(`设置Bin ${binIndex}容量为: ${capacity}`);
+  }
+}
+
+function syncBin(binIndex) {
+  console.log('同步料盒:', binIndex);
+  // 实现同步功能
+}
+
+function initDeviceBins() {
+  const count = prompt('请输入料盒数量:');
+  if (count && selectedDeviceId) {
+    // 实现初始化功能
+    console.log(`初始化设备 ${selectedDeviceId} 的 ${count} 个料盒`);
+  }
+}
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', init);
+
+// 添加CSS样式
+const style = document.createElement('style');
+style.textContent = `
+  .border-left-primary { border-left: 3px solid var(--bs-primary) !important; }
+  .border-left-success { border-left: 3px solid var(--bs-success) !important; }
+  .border-left-warning { border-left: 3px solid var(--bs-warning) !important; }
+  .border-left-info { border-left: 3px solid var(--bs-info) !important; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  .text-xs { font-size: 0.75rem; }
+  .font-weight-bold { font-weight: 600; }
+  .text-gray-800 { color: #495057; }
+  .fa-2x { font-size: 2em; }
+  .progress { background-color: #e9ecef; }
+  .text-sm { font-size: 0.875rem; }
+`;
+document.head.appendChild(style);
 </script>
 {% endblock %}

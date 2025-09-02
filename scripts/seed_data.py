@@ -11,23 +11,34 @@ from __future__ import annotations
 import argparse
 import random
 import sys
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from faker import Faker
 
+# 确保正确设置Python路径
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT))
 
-from app import create_app  # noqa: E402
-from app.extensions import db  # noqa: E402
-from app.models import (  # noqa: E402
-    User, Merchant, Device, Order, Product, Fault, WorkOrder, UpgradePackage, DeviceMaterial, CleaningLog, MaterialCatalog, DeviceBin
-)
-from app.utils.security import hash_password  # noqa: E402
-from app.utils.material_definitions import get_demo_materials, get_extended_demo_materials, DEFAULT_DEVICE_BINS  # noqa: E402
-from app.blueprints.recipes import Recipe  # noqa: E402
-from app.blueprints.recipes import _make_recipe_package  # noqa: E402
+# 设置工作目录
+os.chdir(ROOT)
+
+try:
+    from app import create_app  # noqa: E402
+    from app.extensions import db  # noqa: E402
+    from app.models import (  # noqa: E402
+        User, Merchant, Device, Order, Product, Fault, WorkOrder, UpgradePackage, DeviceMaterial, CleaningLog, MaterialCatalog, DeviceBin
+    )
+    from app.utils.security import hash_password  # noqa: E402
+    from app.utils.material_definitions import get_demo_materials, get_extended_demo_materials, DEFAULT_DEVICE_BINS, DEFAULT_MATERIALS  # noqa: E402
+    from app.blueprints.recipes import Recipe  # noqa: E402
+    from app.blueprints.recipes import _make_recipe_package  # noqa: E402
+except ImportError as e:
+    print(f"导入错误: {e}")
+    print(f"当前工作目录: {os.getcwd()}")
+    print(f"Python路径: {sys.path[:3]}...")
+    print("请确保在项目根目录下运行此脚本")
+    sys.exit(1)
 
 
 def ensure_basics():
@@ -101,113 +112,159 @@ def seed_quick():
 
 def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, merchants: int):
     """大规模 Demo 数据。"""
-    fake = Faker("zh_CN")
-    ensure_basics()
-    
-    # 确保有扩展物料可用
-    extended_mats = get_extended_demo_materials()
-    for mid, code, name, cat, unit, defcap in extended_mats:
-        mc = MaterialCatalog.query.filter_by(code=code).first()
-        if not mc:
-            mc = MaterialCatalog(id=mid, code=code, name=name, unit=unit, category=cat, default_capacity=defcap, is_active=True)
-            db.session.add(mc)
-    db.session.commit()
-    
-    ms = []
-    for i in range(merchants):
-        name = f"演示商户-{i+1}"
-        m = Merchant.query.filter_by(name=name).first()
-        if not m:
-            m = Merchant(name=name)
-            db.session.add(m)
-            db.session.flush()
-        ms.append(m)
-    products = Product.query.all()
-    devs = []
-    for i in range(devices):
-        m = ms[i % len(ms)]
-        dno = f"DEMO-{1000+i}"
-        d = Device.query.filter_by(device_no=dno).first()
-        if not d:
-            d = Device(device_no=dno, merchant_id=m.id, model=random.choice(["C1","C2","C3"]), firmware_version="1.0."+str(random.randint(0,3)))
-            db.session.add(d)
-            db.session.flush()
-        d.status = "online" if random.random() < online_rate else "offline"
-        devs.append(d)
-    db.session.commit()
+    try:
+        fake = Faker("zh_CN")
+        ensure_basics()
+        
+        print(f"[debug] 开始生成 {merchants} 个商户，{devices} 台设备，{orders} 个订单")
+        
+        # 确保有扩展物料可用
+        extended_mats = get_extended_demo_materials()
+        for mid, code, name, cat, unit, defcap in extended_mats:
+            mc = MaterialCatalog.query.filter_by(code=code).first()
+            if not mc:
+                mc = MaterialCatalog(id=mid, code=code, name=name, unit=unit, category=cat, default_capacity=defcap, is_active=True)
+                db.session.add(mc)
+        db.session.commit()
+        print(f"[debug] 物料目录已更新")
+        
+        ms = []
+        for i in range(merchants):
+            name = f"演示商户-{i+1}"
+            m = Merchant.query.filter_by(name=name).first()
+            if not m:
+                m = Merchant(name=name)
+                db.session.add(m)
+                db.session.flush()
+            ms.append(m)
+        print(f"[debug] 商户创建完成: {len(ms)} 个")
+        
+        products = Product.query.all()
+        devs = []
+        for i in range(devices):
+            m = ms[i % len(ms)]
+            dno = f"DEMO-{1000+i}"
+            d = Device.query.filter_by(device_no=dno).first()
+            if not d:
+                d = Device(device_no=dno, merchant_id=m.id, model=random.choice(["C1","C2","C3"]), firmware_version="1.0."+str(random.randint(0,3)))
+                db.session.add(d)
+                db.session.flush()
+            d.status = "online" if random.random() < online_rate else "offline"
+            devs.append(d)
+        db.session.commit()
+        print(f"[debug] 设备创建完成: {len(devs)} 台")
+        
+        # 验证设备是否真的保存了
+        saved_devices = Device.query.filter(Device.device_no.like("DEMO-%")).count()
+        print(f"[debug] 数据库中DEMO设备数量: {saved_devices}")
 
-    # 旧物料（为每台设备造 3-4 个料盒，兼容旧页面）
-    for d in devs:
-        exist = DeviceMaterial.query.filter_by(device_id=d.id).count()
-        if not exist:
-            for mid in range(1, 5):
-                db.session.add(DeviceMaterial(device_id=d.id, material_id=mid, remain=random.uniform(10, 100), capacity=100, threshold=10))
-    db.session.commit()
+        # 新料盒（DeviceBin）初始化（每台设备3-4个料盒，使用合理的物料配置）
+        all_mats = {m.code: m for m in MaterialCatalog.query.all()}
+        
+        # 定义合理的物料组合模式
+        material_patterns = [
+            ['bean-A', 'milk-A', 'syrup-A'],  # 基础组合
+            ['bean-B', 'milk-A', 'syrup-A'],  # 深烘豆组合
+            ['bean-A', 'milk-oat', 'syrup-A'],  # 燕麦奶组合
+            ['bean-B', 'milk-oat', 'syrup-caramel'],  # 高级组合
+            ['bean-A', 'milk-A', 'syrup-caramel'],  # 焦糖组合
+        ]
+        
+        for d in devs:
+            if DeviceBin.query.filter_by(device_id=d.id).count() == 0:
+                # 随机选择一个物料组合模式
+                pattern = random.choice(material_patterns)
+                
+                for i, code in enumerate(pattern, 1):
+                    if code in all_mats:
+                        material = all_mats[code]
+                        # 生成合理的剩余量：10%-90%之间，偏向于中等库存
+                        remaining_ratio = random.triangular(0.1, 0.9, 0.6)  # 偏向60%
+                        remaining = material.default_capacity * remaining_ratio
+                        
+                        # 创建料盒记录
+                        bin_obj = DeviceBin(
+                            device_id=d.id, 
+                            bin_index=i, 
+                            material_id=material.id, 
+                            capacity=material.default_capacity, 
+                            unit=material.unit,
+                            remaining=round(remaining, 2),
+                            custom_label=f"{material.name}({i}号位)"
+                        )
+                        db.session.add(bin_obj)
+                        print(f"  设备 {d.device_no} Bin{i}: {material.name} {remaining:.1f}/{material.default_capacity}{material.unit}")
+        
+        db.session.commit()
+        print(f"[debug] 料盒配置完成")
 
-    # 新料盒（DeviceBin）初始化（每台 3 格，使用更多样化的物料配置）
-    all_mats = {m.code: m for m in MaterialCatalog.query.all()}
-    material_codes = list(all_mats.keys())
-    
-    for d in devs:
-        if DeviceBin.query.filter_by(device_id=d.id).count() == 0:
-            # 随机选择物料组合，增加演示数据的多样性
-            selected_codes = random.sample([code for code in material_codes if all_mats[code].category in ['bean', 'milk', 'syrup']], min(3, len(material_codes)))
-            for i, code in enumerate(selected_codes, 1):
-                material = all_mats[code]
-                db.session.add(DeviceBin(
-                    device_id=d.id, 
-                    bin_index=i, 
-                    material_id=material.id, 
-                    capacity=material.default_capacity, 
-                    unit=material.unit,
-                    remaining=random.uniform(material.default_capacity * 0.1, material.default_capacity * 0.9)
-                ))
-    db.session.commit()
+        # 旧物料系统（DeviceMaterial）- 保持兼容性
+        for d in devs:
+            exist = DeviceMaterial.query.filter_by(device_id=d.id).count()
+            if not exist:
+                for mid in range(1, 5):
+                    if mid <= len(DEFAULT_MATERIALS):
+                        remain = random.uniform(10, 100)
+                        db.session.add(DeviceMaterial(
+                            device_id=d.id, 
+                            material_id=mid, 
+                            remain=remain, 
+                            capacity=100, 
+                            threshold=20
+                        ))
+        db.session.commit()
 
-    # 订单
-    if orders > 0 and products:
-        batch = []
-        for i in range(orders):
-            d = devs[i % len(devs)]
-            p = random.choice(products)
-            qty = random.choice([1,1,2])
-            unit = round(float(p.price), 2)
-            amount = round(unit*qty, 2)
-            dt = datetime.utcnow() - timedelta(days=random.randint(0, 30), hours=random.randint(0,23), minutes=random.randint(0,59))
-            pm = random.choice(["wechat","alipay","cash"])
-            status = random.choice(["paid","paid","refunded","failed"])  # 倾向于已支付
-            o = Order(order_no=f"D{int(dt.timestamp())}{i:05d}", created_at=dt, device_id=d.id, merchant_id=d.merchant_id,
-                      product_id=p.id, product_name=p.name, qty=qty, unit_price=unit, total_amount=amount,
-                      pay_method=pm, pay_status=status, is_exception=(status!="paid" and pm!="cash"))
-            batch.append(o)
-            if len(batch) >= 1000:
-                db.session.add_all(batch); db.session.commit(); batch.clear()
-        if batch:
-            db.session.add_all(batch); db.session.commit()
+        # 订单
+        if orders > 0 and products:
+            batch = []
+            for i in range(orders):
+                d = devs[i % len(devs)]
+                p = random.choice(products)
+                qty = random.choice([1,1,2])
+                unit = round(float(p.price), 2)
+                amount = round(unit*qty, 2)
+                dt = datetime.utcnow() - timedelta(days=random.randint(0, 30), hours=random.randint(0,23), minutes=random.randint(0,59))
+                pm = random.choice(["wechat","alipay","cash"])
+                status = random.choice(["paid","paid","refunded","failed"])  # 倾向于已支付
+                o = Order(order_no=f"D{int(dt.timestamp())}{i:05d}", created_at=dt, device_id=d.id, merchant_id=d.merchant_id,
+                          product_id=p.id, product_name=p.name, qty=qty, unit_price=unit, total_amount=amount,
+                          pay_method=pm, pay_status=status, is_exception=(status!="paid" and pm!="cash"))
+                batch.append(o)
+                if len(batch) >= 1000:
+                    db.session.add_all(batch); db.session.commit(); batch.clear()
+            if batch:
+                db.session.add_all(batch); db.session.commit()
 
-    # 故障/工单（按比例）
-    for d in random.sample(devs, max(1, int(len(devs) * fault_rate)) or 1):
-        f = Fault(device_id=d.id, level=random.choice(["minor","major","critical"]), code=f"E{random.randint(1,9)}", message=fake.sentence())
-        db.session.add(f); db.session.flush()
-        if random.random() < 0.5:
-            db.session.add(WorkOrder(device_id=d.id, fault_id=f.id, status=random.choice(["pending","in_progress","solved"])) )
-    db.session.commit()
+        # 故障/工单（按比例）
+        for d in random.sample(devs, max(1, int(len(devs) * fault_rate)) or 1):
+            f = Fault(device_id=d.id, level=random.choice(["minor","major","critical"]), code=f"E{random.randint(1,9)}", message=fake.sentence())
+            db.session.add(f); db.session.flush()
+            if random.random() < 0.5:
+                db.session.add(WorkOrder(device_id=d.id, fault_id=f.id, status=random.choice(["pending","in_progress","solved"])) )
+        db.session.commit()
 
-    # 清洗日志（每台设备近 10 条）
-    now = datetime.utcnow()
-    for d in devs:
-        if CleaningLog.query.filter_by(device_id=d.id).count() == 0:
-            for k in range(10):
-                dt = now - timedelta(days=random.randint(0, 30), hours=random.randint(0,23))
-                db.session.add(CleaningLog(device_id=d.id, type=random.choice(["rinse","deep","steam"]), result=random.choice(["success","success","fail"]), duration_ms=random.randint(10000, 120000), note=None, created_at=dt))
-    db.session.commit()
+        # 清洗日志（每台设备近 10 条）
+        now = datetime.utcnow()
+        for d in devs:
+            if CleaningLog.query.filter_by(device_id=d.id).count() == 0:
+                for k in range(10):
+                    dt = now - timedelta(days=random.randint(0, 30), hours=random.randint(0,23))
+                    db.session.add(CleaningLog(device_id=d.id, type=random.choice(["rinse","deep","steam"]), result=random.choice(["success","success","fail"]), duration_ms=random.randint(10000, 120000), note=None, created_at=dt))
+        db.session.commit()
 
-    # 升级包占位
-    for v in ["1.1.0","1.2.0"]:
-        if not UpgradePackage.query.filter_by(version=v).first():
-            db.session.add(UpgradePackage(version=v, file_name=f"demo-{v}.json", file_path=str(ROOT / "packages" / f"demo-{v}.json"), md5="demo"))
-    db.session.commit()
-    print(f"[demo] 商户{merchants}、设备{devices}、订单{orders} 已生成/更新。")
+        # 升级包占位
+        for v in ["1.1.0","1.2.0"]:
+            if not UpgradePackage.query.filter_by(version=v).first():
+                db.session.add(UpgradePackage(version=v, file_name=f"demo-{v}.json", file_path=str(ROOT / "packages" / f"demo-{v}.json"), md5="demo"))
+        db.session.commit()
+        
+        print(f"[demo] 商户{merchants}、设备{devices}、订单{orders} 已生成/更新。")
+        
+    except Exception as e:
+        print(f"[error] seed_demo 执行失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
 
 
 def seed_orders(days: int, total: int, exception_rate: float, merchant_count: int):

@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+
+{% block title %}设置 - 咖啡机客户端{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <!-- 基本设置 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-cog"></i> 基本设置
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="basic-settings-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="device-location" class="form-label">设备位置</label>
+                                <input type="text" class="form-control" id="device-location" 
+                                       value="演示咖啡厅" placeholder="请输入设备位置">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="ui-theme" class="form-label">界面主题</label>
+                                <select class="form-select" id="ui-theme">
+                                    <option value="dark" selected>深色主题</option>
+                                    <option value="light">浅色主题</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="language" class="form-label">显示语言</label>
+                                <select class="form-select" id="language">
+                                    <option value="zh-CN" selected>中文简体</option>
+                                    <option value="en-US">English</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="screen-timeout" class="form-label">屏幕超时 (秒)</label>
+                                <input type="number" class="form-control" id="screen-timeout" 
+                                       value="300" min="60" max="3600">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="sound-enabled" class="form-label">声音设置</label>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="sound-enabled" checked>
+                                    <label class="form-check-label" for="sound-enabled">启用声音提示</label>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="touch-sensitivity" class="form-label">触摸灵敏度</label>
+                                <select class="form-select" id="touch-sensitivity">
+                                    <option value="low">低</option>
+                                    <option value="medium" selected>中</option>
+                                    <option value="high">高</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary me-2" onclick="resetBasicSettings()">重置</button>
+                        <button type="button" class="btn btn-primary" onclick="saveBasicSettings()">保存设置</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 网络设置 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-network-wired"></i> 网络设置
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="network-settings-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="server-url" class="form-label">服务器地址</label>
+                                <input type="url" class="form-control" id="server-url" 
+                                       value="http://localhost:5000" placeholder="http://localhost:5000">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="api-key" class="form-label">API密钥</label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="api-key" 
+                                           placeholder="请输入API密钥">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="toggleApiKeyVisibility()">
+                                        <i id="api-key-icon" class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="connection-timeout" class="form-label">连接超时 (秒)</label>
+                                <input type="number" class="form-control" id="connection-timeout" 
+                                       value="30" min="5" max="120">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="retry-interval" class="form-label">重试间隔 (秒)</label>
+                                <input type="number" class="form-control" id="retry-interval" 
+                                       value="10" min="5" max="60">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>提示:</strong> 修改网络设置后需要重启应用才能生效。
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="button" class="btn btn-outline-primary me-2" onclick="testConnection()">测试连接</button>
+                        <button type="button" class="btn btn-primary" onclick="saveNetworkSettings()">保存设置</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 维护设置 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools"></i> 维护设置
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="maintenance-settings-form">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="auto-cleaning" class="form-label">自动清洗</label>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="auto-cleaning" checked>
+                                    <label class="form-check-label" for="auto-cleaning">启用自动清洗</label>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="cleaning-interval" class="form-label">清洗间隔 (小时)</label>
+                                <input type="number" class="form-control" id="cleaning-interval" 
+                                       value="2" min="1" max="24">
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="descaling-reminder" class="form-label">除垢提醒 (天)</label>
+                                <input type="number" class="form-control" id="descaling-reminder" 
+                                       value="7" min="1" max="30">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="cup-count-reset" class="form-label">杯数重置阈值</label>
+                                <input type="number" class="form-control" id="cup-count-reset" 
+                                       value="1000" min="100" max="10000">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="button" class="btn btn-primary" onclick="saveMaintenanceSettings()">保存设置</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- 设备信息 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle"></i> 设备信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">设备编号</label>
+                    <div class="form-control-plaintext" id="device-no">DEMO-CLIENT-001</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">运行模式</label>
+                    <div class="form-control-plaintext">
+                        <span class="badge bg-info" id="simulation-mode">模拟模式</span>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">注册状态</label>
+                    <div class="form-control-plaintext">
+                        <span class="badge bg-warning" id="registration-status">未注册</span>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">版本信息</label>
+                    <div class="form-control-plaintext">v1.0.0</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">最后同步</label>
+                    <div class="form-control-plaintext" id="last-sync">从未同步</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 快捷操作 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-bolt"></i> 快捷操作
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="exportSettings()">
+                        <i class="fas fa-download"></i> 导出设置
+                    </button>
+                    
+                    <button class="btn btn-outline-secondary" onclick="importSettings()">
+                        <i class="fas fa-upload"></i> 导入设置
+                    </button>
+                    
+                    <button class="btn btn-outline-warning" onclick="resetAllSettings()">
+                        <i class="fas fa-undo"></i> 恢复默认
+                    </button>
+                    
+                    <button class="btn btn-outline-info" onclick="restartApp()">
+                        <i class="fas fa-restart"></i> 重启应用
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentConfig = {};
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCurrentSettings();
+    });
+    
+    async function loadCurrentSettings() {
+        try {
+            const response = await apiRequest('/api/config');
+            if (response.success) {
+                currentConfig = response.config;
+                updateSettingsUI();
+            }
+        } catch (error) {
+            console.error('加载设置失败:', error);
+        }
+    }
+    
+    function updateSettingsUI() {
+        // 更新基本设置
+        if (currentConfig.device) {
+            document.getElementById('device-location').value = 
+                currentConfig.device.location || '';
+        }
+        
+        if (currentConfig.ui) {
+            const ui = currentConfig.ui;
+            document.getElementById('ui-theme').value = ui.theme || 'dark';
+            document.getElementById('language').value = ui.language || 'zh-CN';
+            document.getElementById('screen-timeout').value = ui.screen_timeout || 300;
+            document.getElementById('sound-enabled').checked = ui.sound_enabled !== false;
+            document.getElementById('touch-sensitivity').value = ui.touch_sensitivity || 'medium';
+        }
+        
+        // 更新网络设置
+        if (currentConfig.server) {
+            document.getElementById('server-url').value = 
+                currentConfig.server.base_url || 'http://localhost:5000';
+            document.getElementById('connection-timeout').value = 
+                currentConfig.server.timeout || 30;
+            document.getElementById('retry-interval').value = 
+                currentConfig.server.retry_interval || 10;
+        }
+        
+        if (currentConfig.device_config) {
+            document.getElementById('api-key').value = 
+                currentConfig.device_config.api_key || '';
+        }
+        
+        // 更新维护设置
+        if (currentConfig.maintenance) {
+            const maint = currentConfig.maintenance;
+            document.getElementById('auto-cleaning').checked = maint.auto_cleaning_enabled !== false;
+            document.getElementById('cleaning-interval').value = 
+                Math.round(maint.cleaning_interval / 3600) || 2;
+            document.getElementById('descaling-reminder').value = 
+                Math.round(maint.descaling_reminder / 24) || 7;
+            document.getElementById('cup-count-reset').value = 
+                maint.cup_count_reset || 1000;
+        }
+        
+        // 更新设备信息
+        updateDeviceInfo();
+    }
+    
+    function updateDeviceInfo() {
+        if (currentConfig.device) {
+            document.getElementById('device-no').textContent = 
+                currentConfig.device.device_no || 'UNKNOWN';
+        }
+        
+        if (currentConfig.device_config) {
+            const registered = currentConfig.device_config.registered;
+            const statusElement = document.getElementById('registration-status');
+            
+            if (registered) {
+                statusElement.textContent = '已注册';
+                statusElement.className = 'badge bg-success';
+            } else {
+                statusElement.textContent = '未注册';
+                statusElement.className = 'badge bg-warning';
+            }
+            
+            const lastSync = currentConfig.device_config.last_sync;
+            if (lastSync) {
+                document.getElementById('last-sync').textContent = 
+                    formatDate(new Date(lastSync));
+            }
+        }
+        
+        const simulationMode = currentConfig.hardware?.simulation_mode;
+        const modeElement = document.getElementById('simulation-mode');
+        if (simulationMode) {
+            modeElement.textContent = '模拟模式';
+            modeElement.className = 'badge bg-info';
+        } else {
+            modeElement.textContent = '硬件模式';
+            modeElement.className = 'badge bg-success';
+        }
+    }
+    
+    function toggleApiKeyVisibility() {
+        const input = document.getElementById('api-key');
+        const icon = document.getElementById('api-key-icon');
+        
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'fas fa-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'fas fa-eye';
+        }
+    }
+    
+    async function saveBasicSettings() {
+        try {
+            const settings = {
+                device: {
+                    location: document.getElementById('device-location').value
+                },
+                ui: {
+                    theme: document.getElementById('ui-theme').value,
+                    language: document.getElementById('language').value,
+                    screen_timeout: parseInt(document.getElementById('screen-timeout').value),
+                    sound_enabled: document.getElementById('sound-enabled').checked,
+                    touch_sensitivity: document.getElementById('touch-sensitivity').value
+                }
+            };
+            
+            // TODO: 实际保存设置到后端
+            showToast('基本设置已保存', 'success');
+            
+        } catch (error) {
+            console.error('保存基本设置失败:', error);
+            showToast('保存失败', 'danger');
+        }
+    }
+    
+    function resetBasicSettings() {
+        if (confirm('确定要重置基本设置吗？')) {
+            // 重置表单
+            document.getElementById('basic-settings-form').reset();
+            showToast('已重置基本设置', 'info');
+        }
+    }
+    
+    async function saveNetworkSettings() {
+        try {
+            const settings = {
+                server: {
+                    base_url: document.getElementById('server-url').value,
+                    timeout: parseInt(document.getElementById('connection-timeout').value),
+                    retry_interval: parseInt(document.getElementById('retry-interval').value)
+                },
+                device_config: {
+                    api_key: document.getElementById('api-key').value
+                }
+            };
+            
+            // TODO: 实际保存设置到后端
+            showToast('网络设置已保存，重启后生效', 'success');
+            
+        } catch (error) {
+            console.error('保存网络设置失败:', error);
+            showToast('保存失败', 'danger');
+        }
+    }
+    
+    async function testConnection() {
+        try {
+            showToast('正在测试连接...', 'info');
+            
+            const response = await apiRequest('/api/connection/status');
+            if (response.success) {
+                const connections = response.connections;
+                
+                if (connections.api && connections.websocket) {
+                    showToast('连接测试成功', 'success');
+                } else if (connections.api) {
+                    showToast('API连接正常，WebSocket连接失败', 'warning');
+                } else {
+                    showToast('连接测试失败', 'danger');
+                }
+            } else {
+                showToast('连接测试失败', 'danger');
+            }
+            
+        } catch (error) {
+            console.error('连接测试失败:', error);
+            showToast('连接测试失败', 'danger');
+        }
+    }
+    
+    async function saveMaintenanceSettings() {
+        try {
+            const settings = {
+                maintenance: {
+                    auto_cleaning_enabled: document.getElementById('auto-cleaning').checked,
+                    cleaning_interval: parseInt(document.getElementById('cleaning-interval').value) * 3600,
+                    descaling_reminder: parseInt(document.getElementById('descaling-reminder').value) * 24,
+                    cup_count_reset: parseInt(document.getElementById('cup-count-reset').value)
+                }
+            };
+            
+            // TODO: 实际保存设置到后端
+            showToast('维护设置已保存', 'success');
+            
+        } catch (error) {
+            console.error('保存维护设置失败:', error);
+            showToast('保存失败', 'danger');
+        }
+    }
+    
+    function exportSettings() {
+        try {
+            const settings = {
+                timestamp: new Date().toISOString(),
+                config: currentConfig
+            };
+            
+            const blob = new Blob([JSON.stringify(settings, null, 2)], {
+                type: 'application/json'
+            });
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `coffee-client-settings-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showToast('设置已导出', 'success');
+            
+        } catch (error) {
+            console.error('导出设置失败:', error);
+            showToast('导出失败', 'danger');
+        }
+    }
+    
+    function importSettings() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        
+        input.onchange = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const settings = JSON.parse(e.target.result);
+                    
+                    if (settings.config) {
+                        currentConfig = settings.config;
+                        updateSettingsUI();
+                        showToast('设置已导入', 'success');
+                    } else {
+                        showToast('设置文件格式无效', 'danger');
+                    }
+                    
+                } catch (error) {
+                    console.error('导入设置失败:', error);
+                    showToast('导入失败', 'danger');
+                }
+            };
+            
+            reader.readAsText(file);
+        };
+        
+        input.click();
+    }
+    
+    function resetAllSettings() {
+        if (confirm('确定要恢复所有默认设置吗？此操作不可撤销。')) {
+            // TODO: 调用后端API重置设置
+            showToast('已恢复默认设置，重启后生效', 'warning');
+        }
+    }
+    
+    function restartApp() {
+        if (confirm('确定要重启应用吗？这将中断当前的咖啡制作。')) {
+            // TODO: 调用后端API重启应用
+            showToast('正在重启应用...', 'info');
+        }
+    }
+</script>
+{% endblock %}

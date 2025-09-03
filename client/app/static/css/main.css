@@ -1,0 +1,369 @@
+/* 咖啡机客户端自定义样式 */
+
+:root {
+    --coffee-primary: #8B4513;
+    --coffee-secondary: #A0522D;
+    --coffee-light: #CD853F;
+    --coffee-dark: #654321;
+    --success-color: #28a745;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --info-color: #17a2b8;
+}
+
+/* 全局样式 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+    min-height: 100vh;
+    color: #fff;
+}
+
+/* 卡片样式 */
+.card {
+    background: rgba(255, 255, 255, 0.95);
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+    color: #333;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    background: rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 15px 15px 0 0 !important;
+    color: #333;
+    font-weight: 600;
+}
+
+/* 按钮样式 */
+.btn {
+    border-radius: 10px;
+    font-weight: 500;
+    padding: 12px 20px;
+    margin: 5px;
+    min-width: 120px;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.btn-coffee {
+    background: linear-gradient(45deg, var(--coffee-primary), var(--coffee-secondary));
+    color: white;
+    border: none;
+}
+
+.btn-coffee:hover {
+    background: linear-gradient(45deg, var(--coffee-secondary), var(--coffee-light));
+    color: white;
+}
+
+/* 状态指示器 */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: pulse 2s infinite;
+}
+
+.status-online {
+    background-color: var(--success-color);
+}
+
+.status-offline {
+    background-color: var(--danger-color);
+}
+
+.status-warning {
+    background-color: var(--warning-color);
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* 进度条样式 */
+.progress {
+    height: 25px;
+    border-radius: 12px;
+    background-color: rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.progress-bar {
+    border-radius: 12px;
+    font-weight: 500;
+    transition: width 0.6s ease;
+}
+
+.bg-coffee {
+    background: linear-gradient(45deg, var(--coffee-primary), var(--coffee-secondary)) !important;
+}
+
+/* 导航栏样式 */
+.navbar {
+    background: rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.navbar-brand, .nav-link {
+    color: white !important;
+    font-weight: 500;
+}
+
+.nav-link:hover {
+    color: #f8f9fa !important;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+/* 显示值样式 */
+.display-value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 10px 0;
+    color: var(--coffee-primary);
+}
+
+.unit {
+    font-size: 1rem;
+    opacity: 0.7;
+    margin-left: 5px;
+}
+
+/* 咖啡卡片样式 */
+.coffee-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+    height: 100%;
+    border: 2px solid transparent;
+}
+
+.coffee-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+    border-color: var(--coffee-light);
+}
+
+.coffee-icon {
+    font-size: 4rem;
+    color: var(--coffee-primary);
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+}
+
+.coffee-card:hover .coffee-icon {
+    transform: scale(1.1);
+    color: var(--coffee-secondary);
+}
+
+.coffee-name {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--coffee-dark);
+}
+
+.coffee-description {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+}
+
+.param-badge {
+    display: inline-block;
+    background: rgba(139, 69, 19, 0.1);
+    color: var(--coffee-primary);
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin: 2px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* 表单样式 */
+.form-range {
+    margin-bottom: 10px;
+}
+
+.form-range::-webkit-slider-thumb {
+    background: var(--coffee-primary);
+}
+
+.form-range::-moz-range-thumb {
+    background: var(--coffee-primary);
+    border: none;
+}
+
+.input-group-text {
+    min-width: 80px;
+    justify-content: center;
+    background: rgba(139, 69, 19, 0.1);
+    border-color: rgba(139, 69, 19, 0.2);
+    color: var(--coffee-primary);
+}
+
+/* 模态框样式 */
+.modal-content {
+    border-radius: 15px;
+    border: none;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 15px 15px 0 0;
+}
+
+.modal-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0 0 15px 15px;
+}
+
+/* Toast样式 */
+.toast {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* 动画样式 */
+.brewing-animation {
+    animation: brewing-rotate 2s linear infinite;
+}
+
+@keyframes brewing-rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding: 10px;
+    }
+    
+    .display-value {
+        font-size: 1.5rem;
+    }
+    
+    .btn {
+        min-width: 100px;
+        padding: 10px 15px;
+        font-size: 0.9rem;
+    }
+    
+    .coffee-icon {
+        font-size: 3rem;
+    }
+    
+    .card {
+        margin-bottom: 15px;
+    }
+}
+
+/* 触摸屏优化 */
+@media (pointer: coarse) {
+    .btn {
+        padding: 15px 25px;
+        font-size: 1.1rem;
+        min-height: 48px;
+    }
+    
+    .card {
+        margin-bottom: 30px;
+    }
+    
+    .coffee-card {
+        min-height: 200px;
+    }
+    
+    /* 增大触摸目标 */
+    .nav-link {
+        padding: 12px 16px;
+    }
+    
+    .form-range {
+        height: 8px;
+    }
+    
+    .form-range::-webkit-slider-thumb {
+        width: 24px;
+        height: 24px;
+    }
+}
+
+/* 深色主题 */
+.theme-dark {
+    --bs-body-bg: #1a1a1a;
+    --bs-body-color: #ffffff;
+}
+
+.theme-dark .card {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+}
+
+.theme-dark .card-header {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+    .btn {
+        border-width: 3px;
+    }
+    
+    .status-indicator {
+        border: 2px solid #000;
+    }
+    
+    .card {
+        border: 2px solid rgba(0, 0, 0, 0.2);
+    }
+}
+
+/* 减少动画（用户偏好） */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    
+    .btn:hover {
+        transform: none;
+    }
+    
+    .card:hover {
+        transform: none;
+    }
+}

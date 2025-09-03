@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block title %}制作中 - 咖啡机客户端{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0 text-center">
+                    <i class="fas fa-coffee"></i> 咖啡制作中
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <div id="brewing-animation" class="mb-4">
+                        <i class="fas fa-coffee fa-4x text-coffee"></i>
+                    </div>
+                    
+                    <h5 id="current-coffee">制作中...</h5>
+                    <p id="current-step" class="text-muted">准备中...</p>
+                </div>
+                
+                <div class="progress mb-4" style="height: 30px;">
+                    <div id="brew-progress" class="progress-bar bg-coffee" 
+                         style="width: 0%" role="progressbar">
+                        <span id="progress-text">0%</span>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-4 text-center">
+                        <div class="mb-2">
+                            <i class="fas fa-thermometer-half fa-2x text-danger"></i>
+                        </div>
+                        <div class="display-6" id="current-temp">--°C</div>
+                        <small class="text-muted">当前温度</small>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="mb-2">
+                            <i class="fas fa-gauge-high fa-2x text-warning"></i>
+                        </div>
+                        <div class="display-6" id="current-pressure">-- bar</div>
+                        <small class="text-muted">当前压力</small>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="mb-2">
+                            <i class="fas fa-clock fa-2x text-info"></i>
+                        </div>
+                        <div class="display-6" id="elapsed-time">00:00</div>
+                        <small class="text-muted">已用时间</small>
+                    </div>
+                </div>
+                
+                <div class="text-center">
+                    <button id="cancel-btn" class="btn btn-danger btn-lg" onclick="cancelBrewing()">
+                        <i class="fas fa-stop"></i> 取消制作
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 完成对话框 -->
+<div class="modal fade" id="completeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle text-success"></i> 制作完成
+                </h5>
+            </div>
+            <div class="modal-body text-center">
+                <div class="mb-4">
+                    <i class="fas fa-coffee fa-4x text-coffee"></i>
+                </div>
+                <h4>您的咖啡已制作完成！</h4>
+                <p class="text-muted">请取走您的咖啡，祝您享用愉快。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" onclick="backToHome()">
+                    <i class="fas fa-home"></i> 返回主页
+                </button>
+                <button type="button" class="btn btn-coffee" onclick="makeAnother()">
+                    <i class="fas fa-plus"></i> 再来一杯
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    @keyframes brewing {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .brewing-animation {
+        animation: brewing 2s linear infinite;
+    }
+    
+    .text-coffee {
+        color: #8B4513;
+    }
+    
+    .bg-coffee {
+        background: linear-gradient(45deg, #8B4513, #A0522D) !important;
+    }
+    
+    .display-6 {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+    
+    .progress {
+        border-radius: 15px;
+    }
+    
+    .progress-bar {
+        border-radius: 15px;
+        font-weight: 600;
+        transition: width 0.5s ease;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let statusInterval;
+    let startTime;
+    let timeInterval;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        initializePage();
+        startStatusMonitoring();
+        startTimeCounter();
+    });
+    
+    function initializePage() {
+        startTime = new Date();
+        
+        // WebSocket事件监听
+        socket.on('coffee_status_update', handleStatusUpdate);
+        socket.on('step_started', handleStepStarted);
+        socket.on('step_completed', handleStepCompleted);
+        socket.on('job_completed', handleJobCompleted);
+    }
+    
+    function startStatusMonitoring() {
+        // 立即获取一次状态
+        refreshBrewingStatus();
+        
+        // 定期更新状态
+        statusInterval = setInterval(refreshBrewingStatus, 2000);
+    }
+    
+    function startTimeCounter() {
+        timeInterval = setInterval(updateElapsedTime, 1000);
+    }
+    
+    function updateElapsedTime() {
+        if (startTime) {
+            const elapsed = Math.floor((new Date() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('elapsed-time').textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+    }
+    
+    async function refreshBrewingStatus() {
+        try {
+            const response = await apiRequest('/api/status');
+            if (response.success) {
+                updateBrewingStatus(response.status);
+            }
+        } catch (error) {
+            console.error('获取制作状态失败:', error);
+        }
+    }
+    
+    function updateBrewingStatus(status) {
+        // 更新硬件状态
+        if (status.hardware) {
+            document.getElementById('current-temp').textContent = 
+                `${status.hardware.temperature}°C`;
+            document.getElementById('current-pressure').textContent = 
+                `${status.hardware.pressure} bar`;
+        }
+        
+        // 更新制作状态
+        if (status.current_job) {
+            const job = status.current_job;
+            
+            // 更新咖啡类型
+            document.getElementById('current-coffee').textContent = 
+                `制作 ${job.coffee_type}`;
+            
+            // 更新当前步骤
+            if (job.current_step) {
+                document.getElementById('current-step').textContent = job.current_step;
+            }
+            
+            // 更新进度
+            const progress = Math.round(job.progress || 0);
+            const progressBar = document.getElementById('brew-progress');
+            const progressText = document.getElementById('progress-text');
+            
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${progress}%`;
+            
+            // 添加动画效果
+            const animation = document.getElementById('brewing-animation');
+            animation.className = 'brewing-animation';
+            
+            // 检查是否完成
+            if (job.status === 'finished' || job.status === 'error' || job.status === 'cancelled') {
+                handleJobCompleted({
+                    job_id: job.job_id,
+                    status: job.status
+                });
+            }
+        } else {
+            // 没有进行中的任务，可能已完成或出错
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        }
+    }
+    
+    function handleStatusUpdate(data) {
+        console.log('收到状态更新:', data);
+        // 实时更新界面
+    }
+    
+    function handleStepStarted(data) {
+        console.log('步骤开始:', data);
+        
+        if (data.step) {
+            document.getElementById('current-step').textContent = data.step;
+            
+            // 显示步骤提示
+            showToast(`开始: ${data.step}`, 'info');
+        }
+    }
+    
+    function handleStepCompleted(data) {
+        console.log('步骤完成:', data);
+        
+        if (data.step) {
+            showToast(`完成: ${data.step}`, 'success');
+        }
+    }
+    
+    function handleJobCompleted(data) {
+        console.log('制作完成:', data);
+        
+        // 停止定时器
+        if (statusInterval) {
+            clearInterval(statusInterval);
+        }
+        
+        if (timeInterval) {
+            clearInterval(timeInterval);
+        }
+        
+        // 停止动画
+        const animation = document.getElementById('brewing-animation');
+        animation.className = '';
+        
+        // 根据状态显示不同结果
+        if (data.status === 'finished') {
+            // 显示完成对话框
+            setTimeout(() => {
+                const completeModal = new bootstrap.Modal(document.getElementById('completeModal'));
+                completeModal.show();
+            }, 1000);
+            
+            showToast('咖啡制作完成！', 'success');
+        } else if (data.status === 'cancelled') {
+            showToast('制作已取消', 'warning');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        } else if (data.status === 'error') {
+            showToast('制作过程中出现错误', 'danger');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 3000);
+        }
+        
+        // 更新进度条为完成状态
+        const progressBar = document.getElementById('brew-progress');
+        const progressText = document.getElementById('progress-text');
+        
+        if (data.status === 'finished') {
+            progressBar.style.width = '100%';
+            progressText.textContent = '完成';
+            progressBar.classList.remove('bg-coffee');
+            progressBar.classList.add('bg-success');
+        } else {
+            progressBar.classList.remove('bg-coffee');
+            progressBar.classList.add('bg-warning');
+        }
+    }
+    
+    async function cancelBrewing() {
+        if (confirm('确定要取消当前制作吗？')) {
+            try {
+                const response = await apiRequest('/api/coffee/cancel', {
+                    method: 'POST'
+                });
+                
+                if (response.success) {
+                    showToast('已取消制作', 'success');
+                } else {
+                    showToast('取消失败: ' + response.error, 'danger');
+                }
+            } catch (error) {
+                console.error('取消制作失败:', error);
+                showToast('取消失败', 'danger');
+            }
+        }
+    }
+    
+    function backToHome() {
+        window.location.href = '/';
+    }
+    
+    function makeAnother() {
+        window.location.href = '/coffee';
+    }
+    
+    // 页面卸载时清理
+    window.addEventListener('beforeunload', function() {
+        if (statusInterval) {
+            clearInterval(statusInterval);
+        }
+        if (timeInterval) {
+            clearInterval(timeInterval);
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+
+{% block title %}咖啡选择 - 咖啡机客户端{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-coffee"></i> 选择您喜爱的咖啡
+                </h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="coffee-grid">
+    <!-- 咖啡选项将通过JavaScript动态加载 -->
+</div>
+
+<!-- 自定义参数模态框 -->
+<div class="modal fade" id="customizeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-sliders-h"></i> 自定义参数
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="grind-time" class="form-label">研磨时间</label>
+                            <div class="input-group">
+                                <input type="range" class="form-range" id="grind-time" min="10" max="30" value="15">
+                                <span class="input-group-text">
+                                    <span id="grind-time-value">15</span>秒
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="water-amount" class="form-label">水量</label>
+                            <div class="input-group">
+                                <input type="range" class="form-range" id="water-amount" min="30" max="200" value="120">
+                                <span class="input-group-text">
+                                    <span id="water-amount-value">120</span>ml
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="temperature" class="form-label">温度</label>
+                            <div class="input-group">
+                                <input type="range" class="form-range" id="temperature" min="80" max="95" value="92">
+                                <span class="input-group-text">
+                                    <span id="temperature-value">92</span>°C
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="pressure" class="form-label">压力</label>
+                            <div class="input-group">
+                                <input type="range" class="form-range" id="pressure" min="8" max="12" value="9">
+                                <span class="input-group-text">
+                                    <span id="pressure-value">9</span>bar
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="brew-time" class="form-label">萃取时间</label>
+                            <div class="input-group">
+                                <input type="range" class="form-range" id="brew-time" min="20" max="40" value="25">
+                                <span class="input-group-text">
+                                    <span id="brew-time-value">25</span>秒
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3" id="milk-options" style="display: none;">
+                            <label for="milk-amount" class="form-label">牛奶量</label>
+                            <div class="input-group">
+                                <input type="range" class="form-range" id="milk-amount" min="50" max="200" value="150">
+                                <span class="input-group-text">
+                                    <span id="milk-amount-value">150</span>ml
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>提示:</strong> 您可以调整这些参数来定制您的咖啡口味。默认值为推荐设置。
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-coffee" onclick="startCustomCoffee()">开始制作</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 制作确认模态框 -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-coffee"></i> 确认制作
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div id="selected-coffee-icon" class="mb-3">
+                        <i class="fas fa-coffee fa-4x text-coffee"></i>
+                    </div>
+                    <h4 id="selected-coffee-name">咖啡名称</h4>
+                    <p id="selected-coffee-desc" class="text-muted">咖啡描述</p>
+                    
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>注意:</strong> 请确保水箱有足够的水，并且咖啡豆仓有足够的咖啡豆。
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-coffee" onclick="confirmCoffee()">
+                    <i class="fas fa-play"></i> 确认制作
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .coffee-card {
+        transition: all 0.3s ease;
+        cursor: pointer;
+        height: 100%;
+    }
+    
+    .coffee-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+    }
+    
+    .coffee-icon {
+        font-size: 4rem;
+        color: #8B4513;
+        margin-bottom: 15px;
+    }
+    
+    .coffee-name {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .coffee-description {
+        color: #666;
+        font-size: 0.9rem;
+        margin-bottom: 15px;
+    }
+    
+    .coffee-params {
+        font-size: 0.8rem;
+        color: #888;
+    }
+    
+    .param-badge {
+        display: inline-block;
+        background: rgba(139, 69, 19, 0.1);
+        color: #8B4513;
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin: 2px;
+        font-size: 0.75rem;
+    }
+    
+    .text-coffee {
+        color: #8B4513 !important;
+    }
+    
+    .form-range {
+        margin-bottom: 10px;
+    }
+    
+    .input-group-text {
+        min-width: 80px;
+        justify-content: center;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let availableCoffees = {};
+    let selectedCoffeeType = null;
+    
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCoffeeTypes();
+        initializeRangeInputs();
+    });
+    
+    async function loadCoffeeTypes() {
+        try {
+            const response = await apiRequest('/api/coffees');
+            if (response.success) {
+                availableCoffees = response.coffees;
+                renderCoffeeGrid();
+            } else {
+                showToast('加载咖啡类型失败: ' + response.error, 'danger');
+            }
+        } catch (error) {
+            console.error('加载咖啡类型失败:', error);
+            showToast('加载咖啡类型失败', 'danger');
+        }
+    }
+    
+    function renderCoffeeGrid() {
+        const grid = document.getElementById('coffee-grid');
+        grid.innerHTML = '';
+        
+        // 咖啡类型图标映射
+        const coffeeIcons = {
+            espresso: 'fas fa-coffee',
+            americano: 'fas fa-mug-hot',
+            latte: 'fas fa-coffee',
+            cappuccino: 'fas fa-coffee',
+            macchiato: 'fas fa-coffee'
+        };
+        
+        // 咖啡描述映射
+        const coffeeDescriptions = {
+            espresso: '浓郁香醇的意式浓缩咖啡',
+            americano: '清香淡雅的美式咖啡',
+            latte: '香滑顺口的拿铁咖啡',
+            cappuccino: '绵密奶泡的卡布奇诺',
+            macchiato: '层次丰富的玛奇朵'
+        };
+        
+        Object.entries(availableCoffees).forEach(([type, recipe]) => {
+            const col = document.createElement('div');
+            col.className = 'col-lg-4 col-md-6 mb-4';
+            
+            const icon = coffeeIcons[type] || 'fas fa-coffee';
+            const description = coffeeDescriptions[type] || '美味的咖啡';
+            
+            col.innerHTML = `
+                <div class="card coffee-card h-100" onclick="selectCoffee('${type}')">
+                    <div class="card-body text-center">
+                        <div class="coffee-icon">
+                            <i class="${icon}"></i>
+                        </div>
+                        <div class="coffee-name">${recipe.name || type}</div>
+                        <div class="coffee-description">${description}</div>
+                        <div class="coffee-params">
+                            <span class="param-badge">研磨 ${recipe.grind_time || 15}秒</span>
+                            <span class="param-badge">水量 ${recipe.water_amount || 120}ml</span>
+                            <span class="param-badge">温度 ${recipe.temperature || 92}°C</span>
+                            ${recipe.milk_amount ? `<span class="param-badge">牛奶 ${recipe.milk_amount}ml</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <div class="row">
+                            <div class="col-6">
+                                <button class="btn btn-coffee btn-sm w-100" onclick="event.stopPropagation(); quickStart('${type}')">
+                                    <i class="fas fa-play"></i> 快速制作
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button class="btn btn-outline-secondary btn-sm w-100" onclick="event.stopPropagation(); customizeCoffee('${type}')">
+                                    <i class="fas fa-sliders-h"></i> 自定义
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            grid.appendChild(col);
+        });
+    }
+    
+    function selectCoffee(coffeeType) {
+        quickStart(coffeeType);
+    }
+    
+    function quickStart(coffeeType) {
+        selectedCoffeeType = coffeeType;
+        const recipe = availableCoffees[coffeeType];
+        
+        // 更新确认对话框
+        document.getElementById('selected-coffee-name').textContent = recipe.name || coffeeType;
+        document.getElementById('selected-coffee-desc').textContent = 
+            document.querySelector(`[onclick="selectCoffee('${coffeeType}')"] .coffee-description`).textContent;
+        
+        // 显示确认对话框
+        const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+        confirmModal.show();
+    }
+    
+    function customizeCoffee(coffeeType) {
+        selectedCoffeeType = coffeeType;
+        const recipe = availableCoffees[coffeeType];
+        
+        // 设置默认值
+        setRangeValue('grind-time', recipe.grind_time || 15);
+        setRangeValue('water-amount', recipe.water_amount || 120);
+        setRangeValue('temperature', recipe.temperature || 92);
+        setRangeValue('pressure', recipe.pressure || 9);
+        setRangeValue('brew-time', recipe.brew_time || 25);
+        
+        // 显示/隐藏牛奶选项
+        const milkOptions = document.getElementById('milk-options');
+        if (recipe.milk_amount) {
+            milkOptions.style.display = 'block';
+            setRangeValue('milk-amount', recipe.milk_amount);
+        } else {
+            milkOptions.style.display = 'none';
+        }
+        
+        // 显示自定义对话框
+        const customizeModal = new bootstrap.Modal(document.getElementById('customizeModal'));
+        customizeModal.show();
+    }
+    
+    function setRangeValue(id, value) {
+        const input = document.getElementById(id);
+        const display = document.getElementById(id + '-value');
+        input.value = value;
+        display.textContent = value;
+    }
+    
+    function initializeRangeInputs() {
+        // 绑定范围输入事件
+        ['grind-time', 'water-amount', 'temperature', 'pressure', 'brew-time', 'milk-amount'].forEach(id => {
+            const input = document.getElementById(id);
+            const display = document.getElementById(id + '-value');
+            
+            if (input && display) {
+                input.addEventListener('input', function() {
+                    display.textContent = this.value;
+                });
+            }
+        });
+    }
+    
+    async function confirmCoffee() {
+        try {
+            const response = await startCoffeeBrewing(selectedCoffeeType);
+            if (response.success) {
+                // 关闭对话框
+                bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
+                
+                // 显示成功消息并跳转
+                showToast('开始制作咖啡!', 'success');
+                setTimeout(() => {
+                    window.location.href = '/making';
+                }, 1000);
+            } else {
+                showToast('制作失败: ' + response.error, 'danger');
+            }
+        } catch (error) {
+            console.error('制作咖啡失败:', error);
+            showToast('制作失败', 'danger');
+        }
+    }
+    
+    async function startCustomCoffee() {
+        try {
+            // 获取自定义参数
+            const customParams = {
+                grind_time: parseInt(document.getElementById('grind-time').value),
+                water_amount: parseInt(document.getElementById('water-amount').value),
+                temperature: parseInt(document.getElementById('temperature').value),
+                pressure: parseInt(document.getElementById('pressure').value),
+                brew_time: parseInt(document.getElementById('brew-time').value)
+            };
+            
+            // 如果有牛奶选项且可见
+            const milkOptions = document.getElementById('milk-options');
+            if (milkOptions.style.display !== 'none') {
+                customParams.milk_amount = parseInt(document.getElementById('milk-amount').value);
+            }
+            
+            const response = await startCoffeeBrewing(selectedCoffeeType, customParams);
+            if (response.success) {
+                // 关闭对话框
+                bootstrap.Modal.getInstance(document.getElementById('customizeModal')).hide();
+                
+                // 显示成功消息并跳转
+                showToast('开始制作自定义咖啡!', 'success');
+                setTimeout(() => {
+                    window.location.href = '/making';
+                }, 1000);
+            } else {
+                showToast('制作失败: ' + response.error, 'danger');
+            }
+        } catch (error) {
+            console.error('制作咖啡失败:', error);
+            showToast('制作失败', 'danger');
+        }
+    }
+    
+    async function startCoffeeBrewing(coffeeType, customParams = null) {
+        const data = {
+            coffee_type: coffeeType
+        };
+        
+        if (customParams) {
+            data.custom_params = customParams;
+        }
+        
+        return await apiRequest('/api/coffee/start', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+    }
+</script>
+{% endblock %}

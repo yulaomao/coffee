@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+
+{% block title %}主界面 - 咖啡机客户端{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 状态仪表盘 -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tachometer-alt"></i> 咖啡机状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- 温度 -->
+                    <div class="col-md-4 text-center">
+                        <div class="mb-3">
+                            <i class="fas fa-thermometer-half fa-2x text-danger"></i>
+                            <div class="display-value" id="temperature">
+                                --<span class="unit">°C</span>
+                            </div>
+                            <div class="text-muted">温度</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 水位 -->
+                    <div class="col-md-4 text-center">
+                        <div class="mb-3">
+                            <i class="fas fa-tint fa-2x text-primary"></i>
+                            <div class="display-value" id="water-level">
+                                --<span class="unit">%</span>
+                            </div>
+                            <div class="text-muted">水位</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 压力 -->
+                    <div class="col-md-4 text-center">
+                        <div class="mb-3">
+                            <i class="fas fa-gauge-high fa-2x text-warning"></i>
+                            <div class="display-value" id="pressure">
+                                --<span class="unit">bar</span>
+                            </div>
+                            <div class="text-muted">压力</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 组件状态 -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h6>组件状态</h6>
+                        <div class="row">
+                            <div class="col-3 text-center">
+                                <div id="grinder-status" class="status-indicator status-offline"></div>
+                                <small>研磨机</small>
+                            </div>
+                            <div class="col-3 text-center">
+                                <div id="pump-status" class="status-indicator status-offline"></div>
+                                <small>水泵</small>
+                            </div>
+                            <div class="col-3 text-center">
+                                <div id="heater-status" class="status-indicator status-offline"></div>
+                                <small>加热器</small>
+                            </div>
+                            <div class="col-3 text-center">
+                                <div id="steam-status" class="status-indicator status-offline"></div>
+                                <small>蒸汽</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 制作状态 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-coffee"></i> 制作状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="brewing-status" class="text-center">
+                    <div id="current-job" style="display: none;">
+                        <h6 id="job-coffee-type">制作中...</h6>
+                        <div class="progress mb-3">
+                            <div id="job-progress" class="progress-bar bg-coffee" style="width: 0%">0%</div>
+                        </div>
+                        <div id="job-current-step" class="text-muted">准备中...</div>
+                        <button class="btn btn-danger mt-3" onclick="cancelCoffee()">
+                            <i class="fas fa-stop"></i> 取消制作
+                        </button>
+                    </div>
+                    
+                    <div id="idle-status">
+                        <i class="fas fa-coffee fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">咖啡机空闲中</h5>
+                        <p class="text-muted">准备制作美味咖啡</p>
+                        <a href="/coffee" class="btn btn-coffee btn-lg">
+                            <i class="fas fa-play"></i> 开始制作
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 快捷操作 -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-bolt"></i> 快捷操作
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/coffee" class="btn btn-coffee">
+                        <i class="fas fa-coffee"></i> 制作咖啡
+                    </a>
+                    <button class="btn btn-outline-primary" onclick="refreshStatus()">
+                        <i class="fas fa-sync-alt"></i> 刷新状态
+                    </button>
+                    <a href="/settings" class="btn btn-outline-secondary">
+                        <i class="fas fa-cog"></i> 设置
+                    </a>
+                    <a href="/admin" class="btn btn-outline-warning">
+                        <i class="fas fa-tools"></i> 管理
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 连接状态 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-network-wired"></i> 连接状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div id="api-status" class="status-indicator status-offline mb-2"></div>
+                            <div>API连接</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div id="websocket-status" class="status-indicator status-offline mb-2"></div>
+                            <div>WebSocket</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        上次更新: <span id="last-update">--</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 系统信息 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle"></i> 系统信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-12">
+                        <small class="text-muted">
+                            <div>设备编号: <span id="device-no">--</span></div>
+                            <div>运行模式: <span id="simulation-mode">--</span></div>
+                            <div>版本: v1.0.0</div>
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let statusUpdateInterval;
+    
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        initializePage();
+        startStatusUpdates();
+    });
+    
+    function initializePage() {
+        // 请求初始状态
+        refreshStatus();
+        
+        // WebSocket事件监听
+        socket.on('status_update', updateStatus);
+        socket.on('coffee_started', onCoffeeStarted);
+        socket.on('coffee_cancelled', onCoffeeCancelled);
+        socket.on('step_started', onStepStarted);
+        socket.on('step_completed', onStepCompleted);
+        socket.on('job_completed', onJobCompleted);
+    }
+    
+    function startStatusUpdates() {
+        // 定期更新状态
+        statusUpdateInterval = setInterval(refreshStatus, 5000);
+    }
+    
+    async function refreshStatus() {
+        try {
+            // 获取机器状态
+            const statusResponse = await apiRequest('/api/status');
+            if (statusResponse.success) {
+                updateStatus(statusResponse.status);
+            }
+            
+            // 获取连接状态
+            const connectionResponse = await apiRequest('/api/connection/status');
+            if (connectionResponse.success) {
+                updateConnectionInfo(connectionResponse.connections);
+            }
+            
+            // 更新最后更新时间
+            document.getElementById('last-update').textContent = formatTime(new Date());
+            
+        } catch (error) {
+            console.error('刷新状态失败:', error);
+        }
+    }
+    
+    function updateStatus(status) {
+        // 更新硬件状态
+        if (status.hardware) {
+            const hw = status.hardware;
+            document.getElementById('temperature').innerHTML = 
+                `${hw.temperature}<span class="unit">°C</span>`;
+            document.getElementById('water-level').innerHTML = 
+                `${hw.water_level}<span class="unit">%</span>`;
+            document.getElementById('pressure').innerHTML = 
+                `${hw.pressure}<span class="unit">bar</span>`;
+                
+            // 更新组件状态
+            if (hw.components) {
+                updateComponentStatus('grinder', hw.components.grinder);
+                updateComponentStatus('pump', hw.components.pump);
+                updateComponentStatus('heater', hw.components.heater);
+                updateComponentStatus('steam', hw.components.steam);
+            }
+        }
+        
+        // 更新制作状态
+        if (status.current_job) {
+            showJobStatus(status.current_job);
+        } else {
+            showIdleStatus();
+        }
+    }
+    
+    function updateComponentStatus(component, running) {
+        const element = document.getElementById(`${component}-status`);
+        if (running) {
+            element.className = 'status-indicator status-online';
+        } else {
+            element.className = 'status-indicator status-offline';
+        }
+    }
+    
+    function updateConnectionInfo(connections) {
+        // API连接状态
+        const apiStatus = document.getElementById('api-status');
+        apiStatus.className = connections.api ? 
+            'status-indicator status-online' : 'status-indicator status-offline';
+        
+        // WebSocket连接状态
+        const wsStatus = document.getElementById('websocket-status');
+        wsStatus.className = connections.websocket ? 
+            'status-indicator status-online' : 'status-indicator status-offline';
+    }
+    
+    function showJobStatus(job) {
+        document.getElementById('current-job').style.display = 'block';
+        document.getElementById('idle-status').style.display = 'none';
+        
+        document.getElementById('job-coffee-type').textContent = 
+            `制作 ${job.coffee_type}`;
+        
+        const progress = Math.round(job.progress || 0);
+        const progressBar = document.getElementById('job-progress');
+        progressBar.style.width = `${progress}%`;
+        progressBar.textContent = `${progress}%`;
+        
+        if (job.current_step) {
+            document.getElementById('job-current-step').textContent = job.current_step;
+        }
+    }
+    
+    function showIdleStatus() {
+        document.getElementById('current-job').style.display = 'none';
+        document.getElementById('idle-status').style.display = 'block';
+    }
+    
+    async function cancelCoffee() {
+        if (confirm('确定要取消当前制作吗？')) {
+            const response = await apiRequest('/api/coffee/cancel', {
+                method: 'POST'
+            });
+            
+            if (response.success) {
+                showToast('已取消制作', 'success');
+            } else {
+                showToast('取消失败: ' + response.error, 'danger');
+            }
+        }
+    }
+    
+    // WebSocket事件处理
+    function onCoffeeStarted(data) {
+        showToast(`开始制作咖啡: ${data.job_id}`, 'info');
+        refreshStatus();
+    }
+    
+    function onCoffeeCancelled(data) {
+        showToast(data.message, 'warning');
+        refreshStatus();
+    }
+    
+    function onStepStarted(data) {
+        showToast(`步骤开始: ${data.step}`, 'info');
+    }
+    
+    function onStepCompleted(data) {
+        console.log(`步骤完成: ${data.step}`);
+    }
+    
+    function onJobCompleted(data) {
+        if (data.status === 'finished') {
+            showToast('咖啡制作完成！', 'success');
+        } else if (data.status === 'error') {
+            showToast('制作过程中出现错误', 'danger');
+        }
+        refreshStatus();
+    }
+    
+    // 页面卸载时清理
+    window.addEventListener('beforeunload', function() {
+        if (statusUpdateInterval) {
+            clearInterval(statusUpdateInterval);
+        }
+    });
+</script>
+{% endblock %}

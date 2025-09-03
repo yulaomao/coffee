@@ -794,3 +794,73 @@ def export_devices():
     from ..utils.helpers import csv_response
     rows = [[d.device_no, d.model or '', d.status, d.last_seen.isoformat() if d.last_seen else '', d.address or ''] for d in items]
     return csv_response(["device_no","model","status","last_seen","address"], rows, filename="devices_export.csv")
+
+
+# ========== 新的客户端命令接口 ==========
+
+@bp.route("/api/devices/<int:device_id>/client_command", methods=["POST"])
+@jwt_required(optional=True)
+def send_client_command(device_id: int):
+    """
+    向设备发送客户端命令 (新的ClientCommand接口)
+    POST /api/devices/<device_id>/client_command
+    
+    Body: {
+        "command_type": "make_coffee",
+        "parameters": {"recipe": "espresso", "size": "medium"},
+        "priority": 1,
+        "timeout_seconds": 30
+    }
+    """
+    claims = _current_claims()
+    if not claims:
+        return jsonify({"msg": "unauthorized"}), 401
+        
+    device = merchant_scope_filter(Device.query.filter(Device.id == device_id), claims).first_or_404()
+    data = request.get_json(force=True) or {}
+    
+    command_type = data.get("command_type")
+    if not command_type:
+        return jsonify({"error": "command_type is required"}), 400
+    
+    # 导入 ClientCommand 模型
+    from ..models import ClientCommand
+    
+    # 创建命令
+    command_id = str(uuid.uuid4())
+    command = ClientCommand(
+        command_id=command_id,
+        device_id=device.id,
+        command_type=command_type,
+        parameters=data.get("parameters", {}),
+        priority=data.get("priority", 0),
+        timeout_seconds=data.get("timeout_seconds"),
+        created_by=claims.get("id")
+    )
+    
+    if data.get("timeout_seconds"):
+        from datetime import timedelta
+        command.expires_at = datetime.utcnow() + timedelta(seconds=data["timeout_seconds"])
+    
+    db.session.add(command)
+    db.session.commit()
+    
+    # 记录操作日志
+    try:
+        db.session.add(OperationLog(
+            user_id=claims.get('id', 0), 
+            action='send_client_command', 
+            target_type='device', 
+            target_id=device.id, 
+            raw_payload=data
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    return jsonify({
+        "ok": True,
+        "message": "客户端命令已下发",
+        "command_id": command_id,
+        "status": "pending"
+    })

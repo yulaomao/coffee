@@ -40,6 +40,11 @@ def ensure_sqlite_schema(engine: Engine) -> None:
             ("scene", "scene TEXT"),
             ("customer_code", "customer_code TEXT"),
             ("custom_fields", "custom_fields TEXT"),  # JSON 以 TEXT 存储
+            ("software_version", "software_version TEXT"),
+            ("api_key", "api_key TEXT"),
+            ("api_key_created_at", "api_key_created_at DATETIME"),
+            ("ip_address", "ip_address TEXT"),
+            ("config", "config TEXT"),  # JSON 以 TEXT 存储
         ],
         "device_materials": [
             ("capacity", "capacity REAL DEFAULT 100"),
@@ -75,6 +80,65 @@ def ensure_sqlite_schema(engine: Engine) -> None:
         conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS recipe_packages (id INTEGER PRIMARY KEY, recipe_id INTEGER, package_name TEXT NOT NULL, package_path TEXT NOT NULL, md5 TEXT NOT NULL, size_bytes INTEGER NOT NULL DEFAULT 0, uploaded_by INTEGER, created_at TEXT)")
         conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS recipe_dispatch_batches (id TEXT PRIMARY KEY, recipe_package_id INTEGER, initiated_by INTEGER, devices TEXT NOT NULL, strategy TEXT NOT NULL, scheduled_time TEXT, status_summary TEXT, created_at TEXT)")
         conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS recipe_dispatch_logs (id INTEGER PRIMARY KEY, batch_id TEXT NOT NULL, device_id INTEGER NOT NULL, command_id TEXT NOT NULL, status TEXT NOT NULL, result_payload TEXT, result_at TEXT, created_at TEXT)")
+        
+        # 新增客户端API相关表
+        conn.exec_driver_sql("""CREATE TABLE IF NOT EXISTS machine_status (
+            id INTEGER PRIMARY KEY,
+            device_id INTEGER NOT NULL,
+            temperature REAL,
+            water_level REAL,
+            pressure REAL,
+            cups_made_today INTEGER,
+            cups_made_total INTEGER,
+            running_time INTEGER,
+            last_cleaning DATETIME,
+            cleaning_status TEXT,
+            material_status TEXT,
+            raw_data TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""")
+        
+        conn.exec_driver_sql("""CREATE TABLE IF NOT EXISTS machine_logs (
+            id INTEGER PRIMARY KEY,
+            device_id INTEGER NOT NULL,
+            level TEXT NOT NULL DEFAULT 'info',
+            message TEXT NOT NULL,
+            context_data TEXT,
+            raw_log_data TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""")
+        
+        conn.exec_driver_sql("""CREATE TABLE IF NOT EXISTS client_commands (
+            id INTEGER PRIMARY KEY,
+            command_id TEXT NOT NULL UNIQUE,
+            device_id INTEGER NOT NULL,
+            command_type TEXT NOT NULL,
+            parameters TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_by INTEGER,
+            result TEXT,
+            executed_at DATETIME,
+            error_message TEXT,
+            priority INTEGER DEFAULT 0,
+            timeout_seconds INTEGER,
+            expires_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""")
+        
+        # 创建索引
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_machine_status_device_id ON machine_status (device_id)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_machine_status_created_at ON machine_status (created_at)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_machine_logs_device_id ON machine_logs (device_id)")  
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_machine_logs_level ON machine_logs (level)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_machine_logs_created_at ON machine_logs (created_at)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_client_commands_device_id ON client_commands (device_id)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_client_commands_status ON client_commands (status)")
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_client_commands_command_id ON client_commands (command_id)")
+    
+    # 处理列添加
     for table, defs in targets.items():
         try:
             existing = set(_table_columns(engine, table))
@@ -89,3 +153,10 @@ def ensure_sqlite_schema(engine: Engine) -> None:
                     # 尽量不阻塞应用启动；记录到控制台足矣
                     # 由于本函数不具备日志句柄，简单打印
                     print(f"[ensure_sqlite_schema] 添加列失败: {table}.{name}")
+    
+    # 创建设备表新增列的索引（在列添加之后）
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_devices_api_key ON devices (api_key)")
+    except Exception:
+        print("[ensure_sqlite_schema] 创建 devices.api_key 索引失败")

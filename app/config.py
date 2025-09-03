@@ -24,6 +24,9 @@ class Config:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=int(os.environ.get("JWT_REFRESH_DAYS", "7")))
 
     MQTT_BROKER_URL: str | None = os.environ.get("MQTT_BROKER_URL")
+    
+    # Device registration
+    DEVICE_REGISTRATION_KEY: str = os.environ.get("DEVICE_REGISTRATION_KEY", "default_registration_key")
 
     # Swagger
     SWAGGER = {

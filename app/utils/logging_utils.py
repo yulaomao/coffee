@@ -21,7 +21,7 @@ LOGGING_CONFIG = {
             "format": "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d: %(message)s"
         },
         "json": {
-            "()": "app.utils.logging.JSONFormatter",
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
         }
     },
     "handlers": {

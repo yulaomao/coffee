@@ -4,7 +4,7 @@ Health check and system monitoring endpoints.
 from datetime import datetime
 from flask import Blueprint, jsonify
 from ..extensions import db
-from ..utils.logging import get_logger, performance_logger
+from ..utils.logging_utils import get_logger, performance_logger
 
 bp = Blueprint('health', __name__, url_prefix='/api')
 logger = get_logger('health')

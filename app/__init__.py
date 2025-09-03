@@ -95,6 +95,7 @@ def create_app() -> Flask:
         devices,
         faults,
         finance,
+        health,
         materials,
         operation_logs,
         orders,
@@ -115,6 +116,7 @@ def create_app() -> Flask:
     app.register_blueprint(recipes.bp)
     app.register_blueprint(simulate.bp)
     app.register_blueprint(api_docs.bp)
+    app.register_blueprint(health.bp)
 
     # JWT 回调：identity 直接是 dict（包含 id/role/merchant_id）
     @jwt.user_identity_loader

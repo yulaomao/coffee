@@ -1,10 +1,13 @@
 """通用辅助函数：分页、CSV 导出、文件校验等。"""
+
 from __future__ import annotations
+
 import csv
 import hashlib
 import os
 from io import StringIO
 from typing import Iterable, Sequence
+
 from flask import Response, current_app
 
 
@@ -14,7 +17,9 @@ def paginate(query, page: int, per_page: int):
     return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
-def csv_response(headers: Sequence[str], rows: Iterable[Sequence[str]], filename: str = "export.csv") -> Response:
+def csv_response(
+    headers: Sequence[str], rows: Iterable[Sequence[str]], filename: str = "export.csv"
+) -> Response:
     si = StringIO()
     writer = csv.writer(si)
     writer.writerow(headers)

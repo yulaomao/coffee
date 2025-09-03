@@ -1,5 +1,7 @@
 """Swagger UI 文档蓝图（flasgger）。"""
+
 from __future__ import annotations
+
 from flask import Blueprint, jsonify, redirect
 
 bp = Blueprint("api_docs", __name__)

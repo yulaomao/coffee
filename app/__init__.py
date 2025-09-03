@@ -1,19 +1,28 @@
 """app 工厂与初始化逻辑。
 最小可运行实现：注册扩展、蓝图、任务系统与调度。
 """
+
 from __future__ import annotations
+
 import os
 from datetime import timedelta
-from flask import Flask, render_template, redirect, url_for
+
+from flask import Flask, redirect, render_template, url_for
+
 from .config import Config
-from .extensions import db, migrate, jwt, swagger, scheduler
-from .models import User, Merchant
-from .utils.security import hash_password
+from .extensions import db, jwt, migrate, scheduler, swagger
+from .models import Merchant, User
 from .tasks.worker import start_background_worker
+from .utils.security import hash_password
 
 
 def create_app() -> Flask:
-    app = Flask(__name__, instance_relative_config=False, template_folder="templates", static_folder="static")
+    app = Flask(
+        __name__,
+        instance_relative_config=False,
+        template_folder="templates",
+        static_folder="static",
+    )
 
     # 基础配置
     app.config.from_object(Config())
@@ -49,6 +58,7 @@ def create_app() -> Flask:
         # 轻量 SQLite 架构升级：为旧库补齐新增列（开发/演示用）
         try:
             from .utils.upgrade import ensure_sqlite_schema
+
             ensure_sqlite_schema(db.engine)
         except Exception:
             pass
@@ -69,6 +79,7 @@ def create_app() -> Flask:
         # 启动自举：确保物料字典与料盒最小数据存在（幂等）
         try:
             from .utils.bootstrap import ensure_bootstrap_materials
+
             ensure_bootstrap_materials()
         except Exception:
             pass
@@ -77,7 +88,21 @@ def create_app() -> Flask:
     start_background_worker(app)
 
     # 注册蓝图
-    from .blueprints import auth, admin, devices, orders, materials, faults, upgrades, finance, operation_logs, recipes, simulate, api_docs
+    from .blueprints import (
+        admin,
+        api_docs,
+        auth,
+        devices,
+        faults,
+        finance,
+        materials,
+        operation_logs,
+        orders,
+        recipes,
+        simulate,
+        upgrades,
+    )
+
     app.register_blueprint(auth.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(devices.bp)

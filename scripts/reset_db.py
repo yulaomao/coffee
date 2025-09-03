@@ -10,7 +10,9 @@
   # 强制使用 drop_all 方式（不删文件）：
   python scripts/reset_db.py --yes --drop-all
 """
+
 from __future__ import annotations
+
 import argparse
 import os
 import sys
@@ -21,8 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.config import Config  # noqa: E402
 from app import create_app  # noqa: E402
+from app.config import Config  # noqa: E402
 from app.extensions import db  # noqa: E402
 
 
@@ -53,7 +55,9 @@ def _remove_sqlite_files(db_path: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="危险操作：清空数据库并重建")
     ap.add_argument("--yes", action="store_true", help="跳过确认，直接执行")
-    ap.add_argument("--drop-all", action="store_true", help="强制使用 drop_all/create_all（不删除 SQLite 文件）")
+    ap.add_argument(
+        "--drop-all", action="store_true", help="强制使用 drop_all/create_all（不删除 SQLite 文件）"
+    )
     args = ap.parse_args()
 
     if not args.yes:

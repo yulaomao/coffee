@@ -1,8 +1,11 @@
 """安全与权限相关工具：密码散列、角色检查、商户过滤。"""
+
 from __future__ import annotations
+
 from typing import Any, Iterable, Optional
+
 from flask_jwt_extended import get_jwt, verify_jwt_in_request
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 def hash_password(password: str) -> str:
@@ -20,6 +23,7 @@ def require_roles(*roles: str) -> None:
     user_role = claims.get("role")
     if user_role not in roles:
         from flask import abort
+
         abort(403, description="权限不足")
 
 

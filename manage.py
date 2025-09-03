@@ -2,9 +2,13 @@
 manage.py - 应用入口与开发运行脚本。
 可通过 `python manage.py runserver` 启动。
 """
+
 from __future__ import annotations
+
 import os
+
 from flask import Flask
+
 from app import create_app
 
 app: Flask = create_app()

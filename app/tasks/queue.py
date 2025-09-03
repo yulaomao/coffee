@@ -1,5 +1,7 @@
 """内存任务队列（最小实现）。"""
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from queue import Queue
@@ -18,6 +20,7 @@ class Task:
 
 
 queue: "Queue[Task]" = Queue()
+
 
 def submit_task(task: Task) -> None:
     queue.put(task)

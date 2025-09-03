@@ -3,12 +3,16 @@
 - POST /api/workorders
 - PATCH /api/workorders/<id>
 """
+
 from __future__ import annotations
+
 from typing import Any
+
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from ..models import Fault, WorkOrder, Device
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
 from ..extensions import db
+from ..models import Device, Fault, WorkOrder
 from ..utils.security import merchant_scope_filter
 
 bp = Blueprint("faults", __name__)
@@ -24,15 +28,33 @@ def list_faults():
         q = q.filter(Device.merchant_id == claims.get("merchant_id"))
     q = q.with_entities(Fault)
     items = q.order_by(Fault.created_at.desc()).limit(200).all()
-    fmt = request.args.get('format')
-    if fmt == 'csv':
+    fmt = request.args.get("format")
+    if fmt == "csv":
         from ..utils.helpers import csv_response
-        rows = [[f.id, f.device_id, f.level, f.code, f.message, f.created_at.isoformat()] for f in items]
-        return csv_response(["id","device_id","level","code","message","created_at"], rows, filename="faults.csv")
-    return jsonify({"items": [
-        {"id": f.id, "device_id": f.device_id, "level": f.level, "code": f.code, "message": f.message, "created_at": f.created_at.isoformat()}
-        for f in items
-    ]})
+
+        rows = [
+            [f.id, f.device_id, f.level, f.code, f.message, f.created_at.isoformat()] for f in items
+        ]
+        return csv_response(
+            ["id", "device_id", "level", "code", "message", "created_at"],
+            rows,
+            filename="faults.csv",
+        )
+    return jsonify(
+        {
+            "items": [
+                {
+                    "id": f.id,
+                    "device_id": f.device_id,
+                    "level": f.level,
+                    "code": f.code,
+                    "message": f.message,
+                    "created_at": f.created_at.isoformat(),
+                }
+                for f in items
+            ]
+        }
+    )
 
 
 @bp.route("/api/workorders", methods=["POST"])
@@ -46,7 +68,9 @@ def create_workorder():
         dev = Device.query.get_or_404(device_id)
         if dev.merchant_id != claims.get("merchant_id"):
             return jsonify({"msg": "无权限"}), 403
-    wo = WorkOrder(device_id=device_id, fault_id=data.get("fault_id"), status="pending", note=data.get("note"))
+    wo = WorkOrder(
+        device_id=device_id, fault_id=data.get("fault_id"), status="pending", note=data.get("note")
+    )
     db.session.add(wo)
     db.session.commit()
     return jsonify({"id": wo.id})

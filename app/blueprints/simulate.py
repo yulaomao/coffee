@@ -2,11 +2,15 @@
 - POST /simulate/device/<device_no>/status
 - POST /simulate/device/<device_no>/command_result
 """
+
 from __future__ import annotations
+
 from typing import Any
+
 from flask import Blueprint, jsonify, request
+
 from ..extensions import db
-from ..models import Device, DeviceStatusLog, CommandResult, RemoteCommand
+from ..models import CommandResult, Device, DeviceStatusLog, RemoteCommand
 
 bp = Blueprint("simulate", __name__)
 
@@ -29,7 +33,13 @@ def sim_cmd_result(device_no: str):
     command_id = data.get("command_id")
     if not command_id:
         return jsonify({"msg": "missing command_id"}), 400
-    cr = CommandResult(command_id=command_id, device_id=dev.id, success=bool(data.get("success", True)), message=data.get("message"), raw_payload=data)
+    cr = CommandResult(
+        command_id=command_id,
+        device_id=dev.id,
+        success=bool(data.get("success", True)),
+        message=data.get("message"),
+        raw_payload=data,
+    )
     rc = RemoteCommand.query.filter_by(command_id=command_id, device_id=dev.id).first()
     if rc:
         rc.status = "success" if cr.success else "failed"

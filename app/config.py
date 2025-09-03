@@ -1,7 +1,9 @@
 """应用配置。
 可通过环境变量覆盖，默认使用 SQLite 本地文件。
 """
+
 from __future__ import annotations
+
 import os
 from datetime import timedelta
 from pathlib import Path

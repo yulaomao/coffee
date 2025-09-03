@@ -18,3 +18,5 @@ waitress==3.0.0
 python-dateutil==2.9.0.post0
 faker==26.0.0
 pydantic==2.11.7
+black==24.10.0
+isort==5.13.2

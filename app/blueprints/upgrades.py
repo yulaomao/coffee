@@ -2,16 +2,20 @@
 - POST /api/upgrades (multipart upload)
 - POST /api/upgrades/dispatch
 """
+
 from __future__ import annotations
+
 import os
 from typing import Any
-from flask import Blueprint, jsonify, request, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
+
+from flask import Blueprint, current_app, jsonify, request
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from werkzeug.utils import secure_filename
+
 from ..extensions import db
-from ..models import UpgradePackage, Device, RemoteCommand
-from ..utils.helpers import allowed_file, file_md5
+from ..models import Device, RemoteCommand, UpgradePackage
 from ..tasks.queue import Task, submit_task
+from ..utils.helpers import allowed_file, file_md5
 
 bp = Blueprint("upgrades", __name__)
 
@@ -31,7 +35,9 @@ def upload_upgrade():
     save_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
     f.save(save_path)
     md5 = file_md5(save_path)
-    pkg = UpgradePackage(version=request.form.get("version", "v1"), file_name=filename, file_path=save_path, md5=md5)
+    pkg = UpgradePackage(
+        version=request.form.get("version", "v1"), file_name=filename, file_path=save_path, md5=md5
+    )
     db.session.add(pkg)
     db.session.commit()
     return jsonify({"id": pkg.id, "md5": md5})
@@ -59,6 +65,8 @@ def dispatch_upgrade():
         )
         db.session.add(rc)
         cmds.append(rc.command_id)
-        submit_task(Task(id=rc.command_id, type="dispatch_command", payload={"command_id": rc.command_id}))
+        submit_task(
+            Task(id=rc.command_id, type="dispatch_command", payload={"command_id": rc.command_id})
+        )
     db.session.commit()
     return jsonify({"command_ids": cmds})

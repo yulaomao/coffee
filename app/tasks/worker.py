@@ -1,16 +1,20 @@
 """后台 worker：处理命令下发、导出、重试等任务（最小实现）。"""
+
 from __future__ import annotations
+
 import threading
 import time
 import uuid
 from typing import Any
-from flask import Flask
-from ..extensions import db, scheduler
-from ..models import RemoteCommand, CommandResult
-from .queue import queue, Task
 
+from flask import Flask
+
+from ..extensions import db, scheduler
+from ..models import CommandResult, RemoteCommand
+from .queue import Task, queue
 
 _worker_started = False
+
 
 def start_background_worker(app: Flask) -> None:
     global _worker_started

@@ -18,9 +18,13 @@ DEFAULT_DEVICE_BINS = [
     (3, "syrup-A", "Basic Syrup"),
 ]
 
+
 def get_demo_materials():
-    return [(mid, code, name, category, unit, capacity) 
-            for mid, code, name, category, unit, capacity, _ in DEFAULT_MATERIALS]
+    return [
+        (mid, code, name, category, unit, capacity)
+        for mid, code, name, category, unit, capacity, _ in DEFAULT_MATERIALS
+    ]
+
 
 def get_extended_demo_materials():
     return get_demo_materials()

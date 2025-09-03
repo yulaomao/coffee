@@ -7,13 +7,16 @@
   python scripts/seed_data.py stats --days 60 --min-sales 20 --max-sales 120
   python scripts/seed_data.py clear-demo
 """
+
 from __future__ import annotations
+
 import argparse
+import os
 import random
 import sys
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
+
 from faker import Faker
 
 # 确保正确设置Python路径
@@ -25,14 +28,30 @@ os.chdir(ROOT)
 
 try:
     from app import create_app  # noqa: E402
-    from app.extensions import db  # noqa: E402
-    from app.models import (  # noqa: E402
-        User, Merchant, Device, Order, Product, Fault, WorkOrder, UpgradePackage, DeviceMaterial, CleaningLog, MaterialCatalog, DeviceBin
-    )
-    from app.utils.security import hash_password  # noqa: E402
-    from app.utils.material_definitions import get_demo_materials, get_extended_demo_materials, DEFAULT_DEVICE_BINS, DEFAULT_MATERIALS  # noqa: E402
     from app.blueprints.recipes import Recipe  # noqa: E402
     from app.blueprints.recipes import _make_recipe_package  # noqa: E402
+    from app.extensions import db  # noqa: E402
+    from app.models import (  # noqa: E402
+        CleaningLog,
+        Device,
+        DeviceBin,
+        DeviceMaterial,
+        Fault,
+        MaterialCatalog,
+        Merchant,
+        Order,
+        Product,
+        UpgradePackage,
+        User,
+        WorkOrder,
+    )
+    from app.utils.material_definitions import (  # noqa: E402
+        DEFAULT_DEVICE_BINS,
+        DEFAULT_MATERIALS,
+        get_demo_materials,
+        get_extended_demo_materials,
+    )
+    from app.utils.security import hash_password  # noqa: E402
 except ImportError as e:
     print(f"导入错误: {e}")
     print(f"当前工作目录: {os.getcwd()}")
@@ -50,7 +69,13 @@ def ensure_basics():
         db.session.flush()
     admin = User.query.filter_by(username="admin").first()
     if not admin:
-        admin = User(username="admin", password_hash=hash_password("admin123"), email="admin@example.com", role="superadmin", merchant_id=m.id)
+        admin = User(
+            username="admin",
+            password_hash=hash_password("admin123"),
+            email="admin@example.com",
+            role="superadmin",
+            merchant_id=m.id,
+        )
         db.session.add(admin)
     # 常用产品集
     base = [("美式", 10.0), ("拿铁", 12.0), ("卡布奇诺", 13.0), ("摩卡", 15.0)]
@@ -63,7 +88,15 @@ def ensure_basics():
     for mid, code, name, cat, unit, defcap in mats:
         mc = MaterialCatalog.query.filter_by(id=mid).first()
         if not mc:
-            mc = MaterialCatalog(id=mid, code=code, name=name, unit=unit, category=cat, default_capacity=defcap, is_active=True)
+            mc = MaterialCatalog(
+                id=mid,
+                code=code,
+                name=name,
+                unit=unit,
+                category=cat,
+                default_capacity=defcap,
+                is_active=True,
+            )
             db.session.add(mc)
     db.session.commit()
     return m
@@ -74,20 +107,42 @@ def seed_quick():
     m = ensure_basics()
     d1 = Device.query.filter_by(device_no="DEV-1001").first()
     if not d1:
-        d1 = Device(device_no="DEV-1001", merchant_id=m.id, model="C1", firmware_version="1.0.0", status="online")
+        d1 = Device(
+            device_no="DEV-1001",
+            merchant_id=m.id,
+            model="C1",
+            firmware_version="1.0.0",
+            status="online",
+        )
         db.session.add(d1)
         db.session.flush()
     d2 = Device.query.filter_by(device_no="DEV-1002").first()
     if not d2:
-        d2 = Device(device_no="DEV-1002", merchant_id=m.id, model="C1", firmware_version="1.0.0", status="offline")
+        d2 = Device(
+            device_no="DEV-1002",
+            merchant_id=m.id,
+            model="C1",
+            firmware_version="1.0.0",
+            status="offline",
+        )
         db.session.add(d2)
         db.session.flush()
     p = Product.query.filter_by(name="拿铁").first()
     if p and not Order.query.filter_by(device_id=d1.id).first():
         now = datetime.utcnow()
-        o1 = Order(order_no=f"Q{int(now.timestamp())}01", created_at=now, device_id=d1.id, merchant_id=m.id,
-                   product_id=p.id, product_name=p.name, qty=1, unit_price=p.price, total_amount=p.price,
-                   pay_method="cash", pay_status="paid")
+        o1 = Order(
+            order_no=f"Q{int(now.timestamp())}01",
+            created_at=now,
+            device_id=d1.id,
+            merchant_id=m.id,
+            product_id=p.id,
+            product_name=p.name,
+            qty=1,
+            unit_price=p.price,
+            total_amount=p.price,
+            pay_method="cash",
+            pay_status="paid",
+        )
         db.session.add(o1)
     db.session.commit()
     print("[quick] 管理员 admin/admin123，设备 DEV-1001/DEV-1002，示例订单 1 条。")
@@ -99,14 +154,16 @@ def seed_quick():
             for bin_index, material_code, custom_label in DEFAULT_DEVICE_BINS:
                 material = mats.get(material_code)
                 if material:
-                    db.session.add(DeviceBin(
-                        device_id=d.id, 
-                        bin_index=bin_index, 
-                        material_id=material.id, 
-                        capacity=material.default_capacity, 
-                        unit=material.unit, 
-                        custom_label=custom_label
-                    ))
+                    db.session.add(
+                        DeviceBin(
+                            device_id=d.id,
+                            bin_index=bin_index,
+                            material_id=material.id,
+                            capacity=material.default_capacity,
+                            unit=material.unit,
+                            custom_label=custom_label,
+                        )
+                    )
     db.session.commit()
 
 
@@ -115,19 +172,27 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
     try:
         fake = Faker("zh_CN")
         ensure_basics()
-        
+
         print(f"[debug] 开始生成 {merchants} 个商户，{devices} 台设备，{orders} 个订单")
-        
+
         # 确保有扩展物料可用
         extended_mats = get_extended_demo_materials()
         for mid, code, name, cat, unit, defcap in extended_mats:
             mc = MaterialCatalog.query.filter_by(code=code).first()
             if not mc:
-                mc = MaterialCatalog(id=mid, code=code, name=name, unit=unit, category=cat, default_capacity=defcap, is_active=True)
+                mc = MaterialCatalog(
+                    id=mid,
+                    code=code,
+                    name=name,
+                    unit=unit,
+                    category=cat,
+                    default_capacity=defcap,
+                    is_active=True,
+                )
                 db.session.add(mc)
         db.session.commit()
         print(f"[debug] 物料目录已更新")
-        
+
         ms = []
         for i in range(merchants):
             name = f"演示商户-{i+1}"
@@ -138,7 +203,7 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
                 db.session.flush()
             ms.append(m)
         print(f"[debug] 商户创建完成: {len(ms)} 个")
-        
+
         products = Product.query.all()
         devs = []
         for i in range(devices):
@@ -146,55 +211,62 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
             dno = f"DEMO-{1000+i}"
             d = Device.query.filter_by(device_no=dno).first()
             if not d:
-                d = Device(device_no=dno, merchant_id=m.id, model=random.choice(["C1","C2","C3"]), firmware_version="1.0."+str(random.randint(0,3)))
+                d = Device(
+                    device_no=dno,
+                    merchant_id=m.id,
+                    model=random.choice(["C1", "C2", "C3"]),
+                    firmware_version="1.0." + str(random.randint(0, 3)),
+                )
                 db.session.add(d)
                 db.session.flush()
             d.status = "online" if random.random() < online_rate else "offline"
             devs.append(d)
         db.session.commit()
         print(f"[debug] 设备创建完成: {len(devs)} 台")
-        
+
         # 验证设备是否真的保存了
         saved_devices = Device.query.filter(Device.device_no.like("DEMO-%")).count()
         print(f"[debug] 数据库中DEMO设备数量: {saved_devices}")
 
         # 新料盒（DeviceBin）初始化（每台设备3-4个料盒，使用合理的物料配置）
         all_mats = {m.code: m for m in MaterialCatalog.query.all()}
-        
+
         # 定义合理的物料组合模式
         material_patterns = [
-            ['bean-A', 'milk-A', 'syrup-A'],  # 基础组合
-            ['bean-B', 'milk-A', 'syrup-A'],  # 深烘豆组合
-            ['bean-A', 'milk-oat', 'syrup-A'],  # 燕麦奶组合
-            ['bean-B', 'milk-oat', 'syrup-caramel'],  # 高级组合
-            ['bean-A', 'milk-A', 'syrup-caramel'],  # 焦糖组合
+            ["bean-A", "milk-A", "syrup-A"],  # 基础组合
+            ["bean-B", "milk-A", "syrup-A"],  # 深烘豆组合
+            ["bean-A", "milk-oat", "syrup-A"],  # 燕麦奶组合
+            ["bean-B", "milk-oat", "syrup-caramel"],  # 高级组合
+            ["bean-A", "milk-A", "syrup-caramel"],  # 焦糖组合
         ]
-        
+
         for d in devs:
             if DeviceBin.query.filter_by(device_id=d.id).count() == 0:
                 # 随机选择一个物料组合模式
                 pattern = random.choice(material_patterns)
-                
+
                 for i, code in enumerate(pattern, 1):
                     if code in all_mats:
                         material = all_mats[code]
                         # 生成合理的剩余量：10%-90%之间，偏向于中等库存
                         remaining_ratio = random.triangular(0.1, 0.9, 0.6)  # 偏向60%
                         remaining = material.default_capacity * remaining_ratio
-                        
+
                         # 创建料盒记录
                         bin_obj = DeviceBin(
-                            device_id=d.id, 
-                            bin_index=i, 
-                            material_id=material.id, 
-                            capacity=material.default_capacity, 
+                            device_id=d.id,
+                            bin_index=i,
+                            material_id=material.id,
+                            capacity=material.default_capacity,
                             unit=material.unit,
                             remaining=round(remaining, 2),
-                            custom_label=f"{material.name}({i}号位)"
+                            custom_label=f"{material.name}({i}号位)",
                         )
                         db.session.add(bin_obj)
-                        print(f"  设备 {d.device_no} Bin{i}: {material.name} {remaining:.1f}/{material.default_capacity}{material.unit}")
-        
+                        print(
+                            f"  设备 {d.device_no} Bin{i}: {material.name} {remaining:.1f}/{material.default_capacity}{material.unit}"
+                        )
+
         db.session.commit()
         print(f"[debug] 料盒配置完成")
 
@@ -205,13 +277,15 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
                 for mid in range(1, 5):
                     if mid <= len(DEFAULT_MATERIALS):
                         remain = random.uniform(10, 100)
-                        db.session.add(DeviceMaterial(
-                            device_id=d.id, 
-                            material_id=mid, 
-                            remain=remain, 
-                            capacity=100, 
-                            threshold=20
-                        ))
+                        db.session.add(
+                            DeviceMaterial(
+                                device_id=d.id,
+                                material_id=mid,
+                                remain=remain,
+                                capacity=100,
+                                threshold=20,
+                            )
+                        )
         db.session.commit()
 
         # 订单
@@ -220,27 +294,57 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
             for i in range(orders):
                 d = devs[i % len(devs)]
                 p = random.choice(products)
-                qty = random.choice([1,1,2])
+                qty = random.choice([1, 1, 2])
                 unit = round(float(p.price), 2)
-                amount = round(unit*qty, 2)
-                dt = datetime.utcnow() - timedelta(days=random.randint(0, 30), hours=random.randint(0,23), minutes=random.randint(0,59))
-                pm = random.choice(["wechat","alipay","cash"])
-                status = random.choice(["paid","paid","refunded","failed"])  # 倾向于已支付
-                o = Order(order_no=f"D{int(dt.timestamp())}{i:05d}", created_at=dt, device_id=d.id, merchant_id=d.merchant_id,
-                          product_id=p.id, product_name=p.name, qty=qty, unit_price=unit, total_amount=amount,
-                          pay_method=pm, pay_status=status, is_exception=(status!="paid" and pm!="cash"))
+                amount = round(unit * qty, 2)
+                dt = datetime.utcnow() - timedelta(
+                    days=random.randint(0, 30),
+                    hours=random.randint(0, 23),
+                    minutes=random.randint(0, 59),
+                )
+                pm = random.choice(["wechat", "alipay", "cash"])
+                status = random.choice(["paid", "paid", "refunded", "failed"])  # 倾向于已支付
+                o = Order(
+                    order_no=f"D{int(dt.timestamp())}{i:05d}",
+                    created_at=dt,
+                    device_id=d.id,
+                    merchant_id=d.merchant_id,
+                    product_id=p.id,
+                    product_name=p.name,
+                    qty=qty,
+                    unit_price=unit,
+                    total_amount=amount,
+                    pay_method=pm,
+                    pay_status=status,
+                    is_exception=(status != "paid" and pm != "cash"),
+                )
                 batch.append(o)
                 if len(batch) >= 1000:
-                    db.session.add_all(batch); db.session.commit(); batch.clear()
+                    db.session.add_all(batch)
+                    db.session.commit()
+                    batch.clear()
             if batch:
-                db.session.add_all(batch); db.session.commit()
+                db.session.add_all(batch)
+                db.session.commit()
 
         # 故障/工单（按比例）
         for d in random.sample(devs, max(1, int(len(devs) * fault_rate)) or 1):
-            f = Fault(device_id=d.id, level=random.choice(["minor","major","critical"]), code=f"E{random.randint(1,9)}", message=fake.sentence())
-            db.session.add(f); db.session.flush()
+            f = Fault(
+                device_id=d.id,
+                level=random.choice(["minor", "major", "critical"]),
+                code=f"E{random.randint(1,9)}",
+                message=fake.sentence(),
+            )
+            db.session.add(f)
+            db.session.flush()
             if random.random() < 0.5:
-                db.session.add(WorkOrder(device_id=d.id, fault_id=f.id, status=random.choice(["pending","in_progress","solved"])) )
+                db.session.add(
+                    WorkOrder(
+                        device_id=d.id,
+                        fault_id=f.id,
+                        status=random.choice(["pending", "in_progress", "solved"]),
+                    )
+                )
         db.session.commit()
 
         # 清洗日志（每台设备近 10 条）
@@ -248,21 +352,38 @@ def seed_demo(devices: int, orders: int, online_rate: float, fault_rate: float, 
         for d in devs:
             if CleaningLog.query.filter_by(device_id=d.id).count() == 0:
                 for k in range(10):
-                    dt = now - timedelta(days=random.randint(0, 30), hours=random.randint(0,23))
-                    db.session.add(CleaningLog(device_id=d.id, type=random.choice(["rinse","deep","steam"]), result=random.choice(["success","success","fail"]), duration_ms=random.randint(10000, 120000), note=None, created_at=dt))
+                    dt = now - timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
+                    db.session.add(
+                        CleaningLog(
+                            device_id=d.id,
+                            type=random.choice(["rinse", "deep", "steam"]),
+                            result=random.choice(["success", "success", "fail"]),
+                            duration_ms=random.randint(10000, 120000),
+                            note=None,
+                            created_at=dt,
+                        )
+                    )
         db.session.commit()
 
         # 升级包占位
-        for v in ["1.1.0","1.2.0"]:
+        for v in ["1.1.0", "1.2.0"]:
             if not UpgradePackage.query.filter_by(version=v).first():
-                db.session.add(UpgradePackage(version=v, file_name=f"demo-{v}.json", file_path=str(ROOT / "packages" / f"demo-{v}.json"), md5="demo"))
+                db.session.add(
+                    UpgradePackage(
+                        version=v,
+                        file_name=f"demo-{v}.json",
+                        file_path=str(ROOT / "packages" / f"demo-{v}.json"),
+                        md5="demo",
+                    )
+                )
         db.session.commit()
-        
+
         print(f"[demo] 商户{merchants}、设备{devices}、订单{orders} 已生成/更新。")
-        
+
     except Exception as e:
         print(f"[error] seed_demo 执行失败: {str(e)}")
         import traceback
+
         traceback.print_exc()
         db.session.rollback()
 
@@ -277,33 +398,49 @@ def seed_orders(days: int, total: int, exception_rate: float, merchant_count: in
     if not devices:
         # 至少造几台设备
         for i in range(10):
-            db.session.add(Device(device_no=f"SEED-{i:04d}", merchant_id=merchants[0].id, status="online"))
-        db.session.commit(); devices = Device.query.all()
+            db.session.add(
+                Device(device_no=f"SEED-{i:04d}", merchant_id=merchants[0].id, status="online")
+            )
+        db.session.commit()
+        devices = Device.query.all()
     products = Product.query.all()
     if not products:
-        ensure_basics(); products = Product.query.all()
+        ensure_basics()
+        products = Product.query.all()
     user = User.query.first()
 
-    start = datetime.utcnow() - timedelta(days=days-1)
+    start = datetime.utcnow() - timedelta(days=days - 1)
     for i in range(total):
         d = random.choice(devices)
         p = random.choice(products)
-        qty = random.choice([1,1,1,2])
+        qty = random.choice([1, 1, 1, 2])
         unit = round(float(p.price), 2)
-        amount = round(unit*qty, 2)
-        ts = start + timedelta(seconds=random.randint(0, days*86400))
-        pm = random.choice(["wechat","alipay","cash"])
+        amount = round(unit * qty, 2)
+        ts = start + timedelta(seconds=random.randint(0, days * 86400))
+        pm = random.choice(["wechat", "alipay", "cash"])
         status = "paid"
         is_exc = False
         refund_info = None
-        if random.random() < exception_rate and pm in ("wechat","alipay"):
+        if random.random() < exception_rate and pm in ("wechat", "alipay"):
             status = "refund_pending"  # 主动发起退款中
             is_exc = True
             refund_info = {"auto": True, "reason": "callback_timeout"}
-        o = Order(order_no=f"O{int(ts.timestamp())}{i:06d}", created_at=ts, device_id=d.id, merchant_id=d.merchant_id,
-                  product_id=p.id, product_name=p.name, qty=qty, unit_price=unit, total_amount=amount,
-                  pay_method=pm, pay_status=status, is_exception=is_exc, refund_info=refund_info,
-                  created_by=user.id if user else None)
+        o = Order(
+            order_no=f"O{int(ts.timestamp())}{i:06d}",
+            created_at=ts,
+            device_id=d.id,
+            merchant_id=d.merchant_id,
+            product_id=p.id,
+            product_name=p.name,
+            qty=qty,
+            unit_price=unit,
+            total_amount=amount,
+            pay_method=pm,
+            pay_status=status,
+            is_exception=is_exc,
+            refund_info=refund_info,
+            created_by=user.id if user else None,
+        )
         db.session.add(o)
         if i % 500 == 0:
             db.session.flush()
@@ -331,10 +468,20 @@ def seed_stats(days: int, min_sales: int, max_sales: int):
             dev = random.choice(devs)
             qty = 1
             unit = round(float(p.price), 2)
-            amount = unit*qty
-            o = Order(order_no=f"S{int(start.timestamp())}{random.randint(0,999999):06d}", created_at=start + timedelta(minutes=random.randint(0, 24*60-1)),
-                      device_id=dev.id, merchant_id=dev.merchant_id, product_id=p.id, product_name=p.name,
-                      qty=qty, unit_price=unit, total_amount=amount, pay_method="cash", pay_status="paid")
+            amount = unit * qty
+            o = Order(
+                order_no=f"S{int(start.timestamp())}{random.randint(0,999999):06d}",
+                created_at=start + timedelta(minutes=random.randint(0, 24 * 60 - 1)),
+                device_id=dev.id,
+                merchant_id=dev.merchant_id,
+                product_id=p.id,
+                product_name=p.name,
+                qty=qty,
+                unit_price=unit,
+                total_amount=amount,
+                pay_method="cash",
+                pay_status="paid",
+            )
             db.session.add(o)
         if to_add:
             db.session.commit()
@@ -362,11 +509,23 @@ def seed_recipes(with_packages: bool = True):
             "version": "v1.0.0",
             "description": "经典意式浓缩",
             "steps": [
-                {"step_id":"s1","type":"grind","params":{"dose_g":18,"grind_time_ms":6000,"grind_level":5}},
-                {"step_id":"s2","type":"tamp","params":{"pressure_kpa":30,"duration_ms":1500}},
-                {"step_id":"s3","type":"brew","params":{"water_ml":40,"water_temp_c":92,"pump_time_ms":25000}},
+                {
+                    "step_id": "s1",
+                    "type": "grind",
+                    "params": {"dose_g": 18, "grind_time_ms": 6000, "grind_level": 5},
+                },
+                {
+                    "step_id": "s2",
+                    "type": "tamp",
+                    "params": {"pressure_kpa": 30, "duration_ms": 1500},
+                },
+                {
+                    "step_id": "s3",
+                    "type": "brew",
+                    "params": {"water_ml": 40, "water_temp_c": 92, "pump_time_ms": 25000},
+                },
             ],
-            "bin_mapping_schema": {"bin1":"coffee_beans_A"},
+            "bin_mapping_schema": {"bin1": "coffee_beans_A"},
             "applicable_models": ["C1-1.0+"],
         },
         {
@@ -374,13 +533,29 @@ def seed_recipes(with_packages: bool = True):
             "version": "v1.0.0",
             "description": "拿铁",
             "steps": [
-                {"step_id":"s1","type":"grind","params":{"dose_g":18,"grind_time_ms":6200,"grind_level":5}},
-                {"step_id":"s2","type":"tamp","params":{"pressure_kpa":30,"duration_ms":1500}},
-                {"step_id":"s3","type":"brew","params":{"water_ml":35,"water_temp_c":92,"pump_time_ms":23000}},
-                {"step_id":"s4","type":"milk","params":{"milk_ml":180,"steam_time_ms":12000}},
+                {
+                    "step_id": "s1",
+                    "type": "grind",
+                    "params": {"dose_g": 18, "grind_time_ms": 6200, "grind_level": 5},
+                },
+                {
+                    "step_id": "s2",
+                    "type": "tamp",
+                    "params": {"pressure_kpa": 30, "duration_ms": 1500},
+                },
+                {
+                    "step_id": "s3",
+                    "type": "brew",
+                    "params": {"water_ml": 35, "water_temp_c": 92, "pump_time_ms": 23000},
+                },
+                {
+                    "step_id": "s4",
+                    "type": "milk",
+                    "params": {"milk_ml": 180, "steam_time_ms": 12000},
+                },
             ],
-            "bin_mapping_schema": {"bin1":"coffee_beans_A","bin2":"milk_A"},
-            "applicable_models": ["C1-1.0+","C2-2.0+"],
+            "bin_mapping_schema": {"bin1": "coffee_beans_A", "bin2": "milk_A"},
+            "applicable_models": ["C1-1.0+", "C2-2.0+"],
         },
     ]
     created = 0
@@ -389,9 +564,15 @@ def seed_recipes(with_packages: bool = True):
         exists = Recipe.query.filter_by(name=s["name"], version=s["version"]).first()
         if exists:
             continue
-        r = Recipe(name=s["name"], version=s["version"], description=s["description"],
-                   steps=s["steps"], bin_mapping_schema=s["bin_mapping_schema"],
-                   applicable_models=s["applicable_models"], status="published")
+        r = Recipe(
+            name=s["name"],
+            version=s["version"],
+            description=s["description"],
+            steps=s["steps"],
+            bin_mapping_schema=s["bin_mapping_schema"],
+            applicable_models=s["applicable_models"],
+            status="published",
+        )
         db.session.add(r)
         db.session.commit()
         created += 1

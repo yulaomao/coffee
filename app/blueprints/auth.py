@@ -3,11 +3,20 @@ API:
 - POST /api/auth/login
 - POST /api/auth/refresh
 """
+
 from __future__ import annotations
+
 from datetime import timedelta
 from typing import Any, Optional
-from flask import Blueprint, jsonify, request, render_template, redirect, url_for, session
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    get_jwt_identity,
+    jwt_required,
+)
+
 from ..extensions import db
 from ..models import User
 from ..utils.security import verify_password

@@ -2,8 +2,11 @@
 - GET/POST /api/finance/*
 说明：保存记录与导出，第三方对接留空在 README 中说明。
 """
+
 from __future__ import annotations
+
 from typing import Any
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 

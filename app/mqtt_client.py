@@ -2,7 +2,9 @@
 若配置 MQTT_BROKER_URL 则可扩展连接并发布到 devices/{device_no}/commands。
 本最小版本不强制启用。
 """
+
 from __future__ import annotations
+
 from typing import Optional
 
 try:

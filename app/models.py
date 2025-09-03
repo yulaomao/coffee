@@ -6,19 +6,27 @@ product_catalog, material_catalog
 
 为简化演示，部分字段与约束做了最小可运行实现。
 """
+
 from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional, Dict, Any
-from sqlalchemy import Index, UniqueConstraint, ForeignKey
+from typing import Any, Dict, Optional
+
+from sqlalchemy import ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from sqlalchemy.types import JSON
+
 from .extensions import db
 
 
 # 辅助 mixin
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False, index=True)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, nullable=False, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
 
 class Merchant(db.Model, TimestampMixin):
@@ -42,21 +50,27 @@ class User(db.Model, TimestampMixin):
     username: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(nullable=False)
     email: Mapped[Optional[str]] = mapped_column(nullable=True)
-    role: Mapped[str] = mapped_column(nullable=False, index=True)  # superadmin/merchant_admin/ops_engineer/viewer/finance
-    merchant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
+    role: Mapped[str] = mapped_column(
+        nullable=False, index=True
+    )  # superadmin/merchant_admin/ops_engineer/viewer/finance
+    merchant_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("merchants.id"), nullable=True, index=True
+    )
     wx_bind_info: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True, index=True)
 
     merchant = relationship("Merchant", back_populates="users")
-    
+
     def set_password(self, password: str) -> None:
         """Set password hash."""
         from werkzeug.security import generate_password_hash
+
         self.password_hash = generate_password_hash(password)
-    
+
     def check_password(self, password: str) -> bool:
         """Check if password matches hash."""
         from werkzeug.security import check_password_hash
+
         return check_password_hash(self.password_hash, password)
 
 
@@ -75,7 +89,9 @@ class MaterialCatalog(db.Model, TimestampMixin):
     # 新增字段，兼容旧数据：code 可为空以便平滑迁移，但推荐唯一填写
     code: Mapped[Optional[str]] = mapped_column(nullable=True, unique=True, index=True)
     name: Mapped[str] = mapped_column(nullable=False, unique=True)
-    category: Mapped[Optional[str]] = mapped_column(nullable=True)  # e.g. bean/milk/syrup/cup/accessory
+    category: Mapped[Optional[str]] = mapped_column(
+        nullable=True
+    )  # e.g. bean/milk/syrup/cup/accessory
     unit: Mapped[str] = mapped_column(nullable=False, default="g")
     default_capacity: Mapped[Optional[float]] = mapped_column(nullable=True)
     description: Mapped[Optional[str]] = mapped_column(nullable=True)
@@ -119,7 +135,9 @@ class Order(db.Model, TimestampMixin):
     order_no: Mapped[Optional[str]] = mapped_column(nullable=True, unique=True, index=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
     merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
-    product_id: Mapped[Optional[int]] = mapped_column(ForeignKey("product_catalog.id"), nullable=True)
+    product_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("product_catalog.id"), nullable=True
+    )
     product_name: Mapped[Optional[str]] = mapped_column(nullable=True)
     qty: Mapped[int] = mapped_column(nullable=False, default=1)
     unit_price = mapped_column(db.Numeric(10, 2), nullable=False, default=0)
@@ -127,12 +145,16 @@ class Order(db.Model, TimestampMixin):
     # 兼容旧字段：price 等同于 total_amount
     price = synonym("total_amount")
     pay_method: Mapped[str] = mapped_column(nullable=False, default="cash")
-    pay_status: Mapped[str] = mapped_column(nullable=False, default="paid", index=True)  # paid/refund_pending/refunded/failed
+    pay_status: Mapped[str] = mapped_column(
+        nullable=False, default="paid", index=True
+    )  # paid/refund_pending/refunded/failed
     status: Mapped[str] = mapped_column(nullable=False, default="paid", index=True)  # 兼容旧字段
     is_exception: Mapped[bool] = mapped_column(nullable=False, default=False)
     raw_payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     refund_info: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
     device = relationship("Device", back_populates="orders")
 
@@ -147,14 +169,14 @@ class DeviceMaterial(db.Model, TimestampMixin):
     __tablename__ = "device_materials"
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
-    material_id: Mapped[int] = mapped_column(ForeignKey("material_catalog.id"), nullable=False, index=True)
+    material_id: Mapped[int] = mapped_column(
+        ForeignKey("material_catalog.id"), nullable=False, index=True
+    )
     remain: Mapped[float] = mapped_column(nullable=False, default=0)
     capacity: Mapped[float] = mapped_column(nullable=False, default=100)
     threshold: Mapped[float] = mapped_column(nullable=False, default=10)
 
-    __table_args__ = (
-        UniqueConstraint("device_id", "material_id", name="uq_device_material"),
-    )
+    __table_args__ = (UniqueConstraint("device_id", "material_id", name="uq_device_material"),)
 
 
 class DeviceBin(db.Model, TimestampMixin):
@@ -162,16 +184,16 @@ class DeviceBin(db.Model, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
     bin_index: Mapped[int] = mapped_column(nullable=False)  # 1..N
-    material_id: Mapped[Optional[int]] = mapped_column(ForeignKey("material_catalog.id"), nullable=True)
+    material_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("material_catalog.id"), nullable=True
+    )
     capacity: Mapped[Optional[float]] = mapped_column(nullable=True)
     remaining: Mapped[Optional[float]] = mapped_column(nullable=True)
     unit: Mapped[Optional[str]] = mapped_column(nullable=True)
     last_sync_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     custom_label: Mapped[Optional[str]] = mapped_column(nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("device_id", "bin_index", name="uq_device_bin"),
-    )
+    __table_args__ = (UniqueConstraint("device_id", "bin_index", name="uq_device_bin"),)
 
 
 class MaterialImportLog(db.Model, TimestampMixin):
@@ -200,7 +222,9 @@ class WorkOrder(db.Model, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     fault_id: Mapped[Optional[int]] = mapped_column(ForeignKey("faults.id"), nullable=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False)
-    assigned_to_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    assigned_to_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
     status: Mapped[str] = mapped_column(nullable=False, default="pending")
     note: Mapped[Optional[str]] = mapped_column(nullable=True)
 
@@ -227,7 +251,9 @@ class UpgradePackage(db.Model, TimestampMixin):
 class PackageFile(db.Model, TimestampMixin):
     __tablename__ = "package_files"
     id: Mapped[int] = mapped_column(primary_key=True)
-    package_id: Mapped[int] = mapped_column(ForeignKey("upgrade_packages.id"), nullable=False, index=True)
+    package_id: Mapped[int] = mapped_column(
+        ForeignKey("upgrade_packages.id"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(nullable=False)
     path: Mapped[str] = mapped_column(nullable=False)
 
@@ -240,7 +266,9 @@ class RemoteCommand(db.Model, TimestampMixin):
     command_type: Mapped[str] = mapped_column(nullable=False)
     payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     issued_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    status: Mapped[str] = mapped_column(nullable=False, default="pending")  # pending/sent/success/fail
+    status: Mapped[str] = mapped_column(
+        nullable=False, default="pending"
+    )  # pending/sent/success/fail
     result_payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     result_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     batch_info: Mapped[Optional[str]] = mapped_column(nullable=True)
@@ -275,9 +303,7 @@ class CustomFieldConfig(db.Model, TimestampMixin):
     key_index: Mapped[int] = mapped_column(nullable=False, index=True)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
     title: Mapped[str] = mapped_column(nullable=False, default="自定义字段")
-    __table_args__ = (
-        UniqueConstraint("key_index", name="uq_custom_field_key"),
-    )
+    __table_args__ = (UniqueConstraint("key_index", name="uq_custom_field_key"),)
 
 
 # 常用索引

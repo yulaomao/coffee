@@ -1,10 +1,14 @@
 """仪表盘与页面路由（最小实现）。"""
+
 from __future__ import annotations
-from datetime import datetime, timedelta, date
-from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+
+from datetime import date, datetime, timedelta
+
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
 from ..extensions import db
-from ..models import Device, Order, Fault, Merchant, MaterialCatalog, DeviceBin
+from ..models import Device, DeviceBin, Fault, MaterialCatalog, Merchant, Order
 
 bp = Blueprint("admin", __name__, url_prefix="")
 
@@ -13,6 +17,7 @@ bp = Blueprint("admin", __name__, url_prefix="")
 def ensure_login():
     # 简单页面会话保护，不影响 API 的 JWT 保护
     from flask import request as flask_request
+
     if flask_request.path.startswith("/api/"):
         return
     if flask_request.endpoint in {"auth.login_page", "static"}:
@@ -28,10 +33,24 @@ def dashboard():
     # 基础数字用于首屏占位，实际图表/卡片将通过 API 动态刷新
     device_count = Device.query.count()
     fault_count = Fault.query.count()
-    order_today = Order.query.filter(Order.created_at >= datetime.utcnow().date(), Order.pay_status == "paid").count()
-    revenue_today = db.session.query(db.func.sum(Order.total_amount)).filter(Order.created_at >= datetime.utcnow().date(), Order.pay_status == "paid").scalar() or 0
+    order_today = Order.query.filter(
+        Order.created_at >= datetime.utcnow().date(), Order.pay_status == "paid"
+    ).count()
+    revenue_today = (
+        db.session.query(db.func.sum(Order.total_amount))
+        .filter(Order.created_at >= datetime.utcnow().date(), Order.pay_status == "paid")
+        .scalar()
+        or 0
+    )
     merchants = Merchant.query.order_by(Merchant.id.asc()).all()
-    return render_template("dashboard.html", device_count=device_count, fault_count=fault_count, order_today=order_today, revenue_today=revenue_today, merchants=merchants)
+    return render_template(
+        "dashboard.html",
+        device_count=device_count,
+        fault_count=fault_count,
+        order_today=order_today,
+        revenue_today=revenue_today,
+        merchants=merchants,
+    )
 
 
 def _daterange(from_str: str | None, to_str: str | None):
@@ -41,7 +60,11 @@ def _daterange(from_str: str | None, to_str: str | None):
     except Exception:
         to_d = date.today()
     try:
-        from_d = datetime.strptime(from_str, "%Y-%m-%d").date() if from_str else to_d - timedelta(days=29)
+        from_d = (
+            datetime.strptime(from_str, "%Y-%m-%d").date()
+            if from_str
+            else to_d - timedelta(days=29)
+        )
     except Exception:
         from_d = to_d - timedelta(days=29)
     if from_d > to_d:
@@ -69,18 +92,21 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
             mid = int(merchant_id)
             q_device = q_device.filter(Device.merchant_id == mid)
             q_order = q_order.filter(Order.merchant_id == mid)
-            q_fault = q_fault.join(Device, Fault.device_id == Device.id).filter(Device.merchant_id == mid)
+            q_fault = q_fault.join(Device, Fault.device_id == Device.id).filter(
+                Device.merchant_id == mid
+            )
         except Exception:
             pass
     if claims:
         from ..utils.security import merchant_scope_filter
+
         q_device = merchant_scope_filter(q_device, claims)
         q_order = merchant_scope_filter(q_order, claims)
         # 对 Fault 使用基于角色的商户过滤（join 了 Device）
         try:
-            role = claims.get('role')
-            mid = claims.get('merchant_id')
-            if role != 'superadmin' and mid:
+            role = claims.get("role")
+            mid = claims.get("merchant_id")
+            if role != "superadmin" and mid:
                 q_fault = q_fault.filter(Device.merchant_id == int(mid))
         except Exception:
             pass
@@ -96,9 +122,13 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
     for d in days:
         start_dt = datetime.combine(d, datetime.min.time())
         end_dt = start_dt + timedelta(days=1)
-        qd = q_order.filter(Order.created_at >= start_dt, Order.created_at < end_dt, Order.pay_status == "paid")
+        qd = q_order.filter(
+            Order.created_at >= start_dt, Order.created_at < end_dt, Order.pay_status == "paid"
+        )
         sales = qd.count()
-        revenue = qd.with_entities(db.func.coalesce(db.func.sum(Order.total_amount), 0.0)).scalar() or 0.0
+        revenue = (
+            qd.with_entities(db.func.coalesce(db.func.sum(Order.total_amount), 0.0)).scalar() or 0.0
+        )
         # 活跃设备：当天产生过订单的设备数（在 q_order 作用域内）
         active = qd.with_entities(db.func.count(db.func.distinct(Order.device_id))).scalar() or 0
         # 在线率：用活跃设备/总设备 近似（示例数据）
@@ -115,9 +145,7 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
         end_all = datetime.combine(days[-1] + timedelta(days=1), datetime.min.time())
         fq = q_fault.filter(Fault.created_at >= start_all, Fault.created_at < end_all)
         fault_counts = (
-            fq.with_entities(Fault.level, db.func.count(Fault.id))
-            .group_by(Fault.level)
-            .all()
+            fq.with_entities(Fault.level, db.func.count(Fault.id)).group_by(Fault.level).all()
         )
     fault_labels = [r[0] for r in fault_counts]
     fault_data = [int(r[1]) for r in fault_counts]
@@ -138,29 +166,35 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
             pass
     if claims:
         try:
-            role = claims.get('role')
-            mid = claims.get('merchant_id')
-            if role != 'superadmin' and mid:
+            role = claims.get("role")
+            mid = claims.get("merchant_id")
+            if role != "superadmin" and mid:
                 alerts_q = alerts_q.filter(Device.merchant_id == int(mid))
         except Exception:
             pass
-    alerts = alerts_q.order_by((DeviceBin.remaining / db.func.nullif(DeviceBin.capacity, 1)).asc()).limit(5).all()
+    alerts = (
+        alerts_q.order_by((DeviceBin.remaining / db.func.nullif(DeviceBin.capacity, 1)).asc())
+        .limit(5)
+        .all()
+    )
     alert_list = []
     for db_bin, dev, mc in alerts:
         percentage = round((db_bin.remaining / db_bin.capacity) * 100, 1) if db_bin.capacity else 0
-        alert_list.append({
-            "device_no": dev.device_no,
-            "device_id": dev.id,
-            "material_id": db_bin.material_id,
-            "material_name": mc.name if mc else f"料盒{db_bin.bin_index}",
-            "unit": (mc.unit if mc else db_bin.unit or "g"),
-            "remain": float(db_bin.remaining or 0),
-            "capacity": float(db_bin.capacity or 0),
-            "threshold": float(db_bin.capacity * 0.2) if db_bin.capacity else 0,  # 20%作为阈值
-            "percent": percentage,
-            "stock_percent": percentage,  # 与percent相同
-            "severity": "critical" if percentage <= 0 else "warning",
-        })
+        alert_list.append(
+            {
+                "device_no": dev.device_no,
+                "device_id": dev.id,
+                "material_id": db_bin.material_id,
+                "material_name": mc.name if mc else f"料盒{db_bin.bin_index}",
+                "unit": (mc.unit if mc else db_bin.unit or "g"),
+                "remain": float(db_bin.remaining or 0),
+                "capacity": float(db_bin.capacity or 0),
+                "threshold": float(db_bin.capacity * 0.2) if db_bin.capacity else 0,  # 20%作为阈值
+                "percent": percentage,
+                "stock_percent": percentage,  # 与percent相同
+                "severity": "critical" if percentage <= 0 else "warning",
+            }
+        )
 
     # 即将告警 Top5（20% <= remaining <= 50%）
     near_factor = 0.5
@@ -179,29 +213,35 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
             pass
     if claims:
         try:
-            role = claims.get('role')
-            mid = claims.get('merchant_id')
-            if role != 'superadmin' and mid:
+            role = claims.get("role")
+            mid = claims.get("merchant_id")
+            if role != "superadmin" and mid:
                 near_q = near_q.filter(Device.merchant_id == int(mid))
         except Exception:
             pass
-    near_rows = near_q.order_by((DeviceBin.remaining / db.func.nullif(DeviceBin.capacity, 1)).asc()).limit(5).all()
+    near_rows = (
+        near_q.order_by((DeviceBin.remaining / db.func.nullif(DeviceBin.capacity, 1)).asc())
+        .limit(5)
+        .all()
+    )
     near_list = []
     for db_bin, dev, mc in near_rows:
         percentage = round((db_bin.remaining / db_bin.capacity) * 100, 1) if db_bin.capacity else 0
-        near_list.append({
-            "device_no": dev.device_no,
-            "device_id": dev.id,
-            "material_id": db_bin.material_id,
-            "material_name": mc.name if mc else f"料盒{db_bin.bin_index}",
-            "unit": (mc.unit if mc else db_bin.unit or "g"),
-            "remain": float(db_bin.remaining or 0),
-            "capacity": float(db_bin.capacity or 0),
-            "threshold": float(db_bin.capacity * 0.2) if db_bin.capacity else 0,  # 20%作为阈值
-            "percent": percentage,
-            "stock_percent": percentage,  # 与percent相同
-            "severity": "near",
-        })
+        near_list.append(
+            {
+                "device_no": dev.device_no,
+                "device_id": dev.id,
+                "material_id": db_bin.material_id,
+                "material_name": mc.name if mc else f"料盒{db_bin.bin_index}",
+                "unit": (mc.unit if mc else db_bin.unit or "g"),
+                "remain": float(db_bin.remaining or 0),
+                "capacity": float(db_bin.capacity or 0),
+                "threshold": float(db_bin.capacity * 0.2) if db_bin.capacity else 0,  # 20%作为阈值
+                "percent": percentage,
+                "stock_percent": percentage,  # 与percent相同
+                "severity": "near",
+            }
+        )
 
     # 告警统计计数
     base_m_q = db.session.query(DeviceBin).join(Device, Device.id == DeviceBin.device_id)
@@ -212,24 +252,38 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
             pass
     if claims:
         try:
-            role = claims.get('role')
-            mid = claims.get('merchant_id')
-            if role != 'superadmin' and mid:
+            role = claims.get("role")
+            mid = claims.get("merchant_id")
+            if role != "superadmin" and mid:
                 base_m_q = base_m_q.filter(Device.merchant_id == int(mid))
         except Exception:
             pass
-    critical_count = base_m_q.filter(DeviceBin.capacity > 0).filter(DeviceBin.remaining <= 0).count()
-    warning_count = base_m_q.filter(DeviceBin.capacity > 0).filter(DeviceBin.remaining > 0).filter((DeviceBin.remaining / DeviceBin.capacity) < 0.2).count()
-    near_count = base_m_q.filter(DeviceBin.capacity > 0).filter((DeviceBin.remaining / DeviceBin.capacity) >= 0.2).filter((DeviceBin.remaining / DeviceBin.capacity) <= near_factor).count()
+    critical_count = (
+        base_m_q.filter(DeviceBin.capacity > 0).filter(DeviceBin.remaining <= 0).count()
+    )
+    warning_count = (
+        base_m_q.filter(DeviceBin.capacity > 0)
+        .filter(DeviceBin.remaining > 0)
+        .filter((DeviceBin.remaining / DeviceBin.capacity) < 0.2)
+        .count()
+    )
+    near_count = (
+        base_m_q.filter(DeviceBin.capacity > 0)
+        .filter((DeviceBin.remaining / DeviceBin.capacity) >= 0.2)
+        .filter((DeviceBin.remaining / DeviceBin.capacity) <= near_factor)
+        .count()
+    )
 
     # KPI 计算（以最后一天为“今日”）
     sales_today = sales_series[-1] if sales_series else 0
     revenue_today = revenue_series[-1] if revenue_series else 0.0
     online_rate_today = online_rate_series[-1] if online_rate_series else 0.0
+
     def change_rate(cur: float, prev: float):
         if prev == 0:
             return None
         return round((cur - prev) / prev * 100, 2)
+
     yoy = change_rate(sales_today, sales_series[-2] if len(sales_series) > 1 else 0)
     mom = change_rate(revenue_today, revenue_series[-2] if len(revenue_series) > 1 else 0)
 
@@ -245,7 +299,7 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
             "online_rate": online_rate_today,
             "sales_today": sales_today,
             "revenue_today": float(revenue_today),
-            "changes": {"sales_yoy": yoy, "revenue_mom": mom}
+            "changes": {"sales_yoy": yoy, "revenue_mom": mom},
         },
         "series": {
             "dates": series_dates,
@@ -255,9 +309,13 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
             "daily_revenue": revenue_series,
         },
         "faults_pie": {"labels": fault_labels, "data": fault_data},
-    "materials_alert_top5": alert_list,
-    "materials_near_top5": near_list,
-    "materials_alert_stats": {"critical": int(critical_count), "warning": int(warning_count), "near": int(near_count)},
+        "materials_alert_top5": alert_list,
+        "materials_near_top5": near_list,
+        "materials_alert_stats": {
+            "critical": int(critical_count),
+            "warning": int(warning_count),
+            "near": int(near_count),
+        },
     }
     return result
 
@@ -266,6 +324,7 @@ def _aggregate_summary(query_params: dict, claims: dict | None = None):
 def api_demo_load():
     # 使用统一脚本入口，生成演示数据（与 CLI 参数保持一致）
     from scripts.seed_data import seed_demo  # type: ignore
+
     params = request.get_json(silent=True) or {}
     seed_demo(
         devices=int(params.get("devices", 200)),
@@ -280,8 +339,9 @@ def api_demo_load():
 
 @bp.route("/api/demo/clear", methods=["POST"])
 def api_demo_clear():
-    from ..models import Order, Fault, WorkOrder, Device
     from ..extensions import db
+    from ..models import Device, Fault, Order, WorkOrder
+
     # 清空演示数据（保留管理员与默认商户）
     Order.query.delete()
     WorkOrder.query.delete()
@@ -315,14 +375,19 @@ def devices_page():
 @bp.route("/devices/<int:device_id>")
 def device_detail_page(device_id: int):
     device = Device.query.get_or_404(device_id)
-    recent_orders = Order.query.filter_by(device_id=device.id).order_by(Order.created_at.desc()).limit(10).all()
+    recent_orders = (
+        Order.query.filter_by(device_id=device.id).order_by(Order.created_at.desc()).limit(10).all()
+    )
     return render_template("device_detail.html", device=device, recent_orders=recent_orders)
+
 
 # 通过设备编号访问详情，便于前端链接（重用上面的模板）
 @bp.route("/devices/<string:device_no>")
 def device_detail_by_no(device_no: str):
     device = Device.query.filter_by(device_no=device_no).first_or_404()
-    recent_orders = Order.query.filter_by(device_id=device.id).order_by(Order.created_at.desc()).limit(10).all()
+    recent_orders = (
+        Order.query.filter_by(device_id=device.id).order_by(Order.created_at.desc()).limit(10).all()
+    )
     return render_template("device_detail.html", device=device, recent_orders=recent_orders)
 
 
@@ -330,9 +395,11 @@ def device_detail_by_no(device_no: str):
 def orders_page():
     return render_template("orders_list.html")
 
+
 @bp.route("/orders/exceptions")
 def orders_exceptions_page():
     return render_template("orders_exceptions.html")
+
 
 @bp.route("/orders/charts")
 def orders_charts_page():

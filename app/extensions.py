@@ -13,3 +13,5 @@ migrate: Migrate = Migrate()
 jwt: JWTManager = JWTManager()
 swagger: Swagger = Swagger()
 scheduler: BackgroundScheduler = BackgroundScheduler()
+# SocketIO will be initialized in __init__.py to avoid circular imports
+socketio = None

@@ -77,6 +77,7 @@ class Device(db.Model, TimestampMixin):
     merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), nullable=False, index=True)
     model: Mapped[Optional[str]] = mapped_column(nullable=True)
     firmware_version: Mapped[Optional[str]] = mapped_column(nullable=True)
+    software_version: Mapped[Optional[str]] = mapped_column(nullable=True)
     last_seen: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
     status: Mapped[str] = mapped_column(nullable=False, default="offline", index=True)
     location_lat: Mapped[Optional[float]] = mapped_column(nullable=True)
@@ -87,6 +88,14 @@ class Device(db.Model, TimestampMixin):
     scene: Mapped[Optional[str]] = mapped_column(nullable=True)
     customer_code: Mapped[Optional[str]] = mapped_column(nullable=True)
     custom_fields: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    
+    # Client API authentication fields
+    api_key: Mapped[Optional[str]] = mapped_column(nullable=True, unique=True, index=True)
+    api_key_created_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(nullable=True)
+    
+    # Device configuration
+    config: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     merchant = relationship("Merchant", back_populates="devices")
     orders = relationship("Order", back_populates="device")
@@ -271,3 +280,68 @@ class CustomFieldConfig(db.Model, TimestampMixin):
 Index("ix_orders_created", Order.created_at)
 Index("ix_faults_created", Fault.created_at)
 Index("ix_work_orders_status", WorkOrder.status)
+
+
+class MachineStatus(db.Model, TimestampMixin):
+    """机器状态记录模型 - 详细的设备状态数据"""
+    __tablename__ = "machine_status"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    
+    # 基本状态
+    temperature: Mapped[Optional[float]] = mapped_column(nullable=True)
+    water_level: Mapped[Optional[float]] = mapped_column(nullable=True)
+    pressure: Mapped[Optional[float]] = mapped_column(nullable=True)
+    
+    # 运行数据
+    cups_made_today: Mapped[Optional[int]] = mapped_column(nullable=True)
+    cups_made_total: Mapped[Optional[int]] = mapped_column(nullable=True)
+    running_time: Mapped[Optional[int]] = mapped_column(nullable=True)  # seconds
+    
+    # 维护数据
+    last_cleaning: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    cleaning_status: Mapped[Optional[str]] = mapped_column(nullable=True)
+    material_status: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    
+    # 原始状态数据
+    raw_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+
+class MachineLog(db.Model, TimestampMixin):
+    """机器日志模型"""
+    __tablename__ = "machine_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    
+    level: Mapped[str] = mapped_column(nullable=False, default="info", index=True)  # info/warning/error
+    message: Mapped[str] = mapped_column(nullable=False)
+    context_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    
+    # 客户端上传的原始日志数据
+    raw_log_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+
+class ClientCommand(db.Model, TimestampMixin):
+    """客户端命令模型 - 扩展自RemoteCommand"""
+    __tablename__ = "client_commands"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    command_id: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
+    
+    # 命令信息
+    command_type: Mapped[str] = mapped_column(nullable=False)
+    parameters: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    
+    # 状态信息
+    status: Mapped[str] = mapped_column(nullable=False, default="pending")  # pending/sent/executing/success/failed
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    
+    # 执行结果
+    result: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    executed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(nullable=True)
+    
+    # 优先级和超时
+    priority: Mapped[int] = mapped_column(nullable=False, default=0)
+    timeout_seconds: Mapped[Optional[int]] = mapped_column(nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

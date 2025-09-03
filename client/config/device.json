@@ -1,0 +1,12 @@
+{
+    "device_no": "DEMO-CLIENT-001",
+    "api_key": "",
+    "registered": false,
+    "last_sync": null,
+    "server_url": "http://localhost:5000",
+    "settings": {
+        "auto_start": true,
+        "debug_mode": false,
+        "simulation_only": true
+    }
+}

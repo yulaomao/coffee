@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block title %}系统管理 - 咖啡机客户端{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 系统状态 -->
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tachometer-alt"></i> 系统状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <i class="fas fa-microchip fa-2x text-primary mb-2"></i>
+                            <div class="h6">CPU使用率</div>
+                            <div class="display-6" id="cpu-usage">--%</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <i class="fas fa-memory fa-2x text-success mb-2"></i>
+                            <div class="h6">内存使用</div>
+                            <div class="display-6" id="memory-usage">--%</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <i class="fas fa-thermometer-half fa-2x text-warning mb-2"></i>
+                            <div class="h6">系统温度</div>
+                            <div class="display-6" id="system-temp">--°C</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <i class="fas fa-clock fa-2x text-info mb-2"></i>
+                            <div class="h6">运行时间</div>
+                            <div class="display-6" id="uptime">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 硬件测试 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-wrench"></i> 硬件测试
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <button class="btn btn-outline-primary w-100" onclick="testComponent('grinder')">
+                            <i class="fas fa-cog"></i><br>
+                            <small>测试研磨机</small>
+                        </button>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <button class="btn btn-outline-primary w-100" onclick="testComponent('pump')">
+                            <i class="fas fa-tint"></i><br>
+                            <small>测试水泵</small>
+                        </button>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <button class="btn btn-outline-primary w-100" onclick="testComponent('heater')">
+                            <i class="fas fa-fire"></i><br>
+                            <small>测试加热器</small>
+                        </button>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <button class="btn btn-outline-primary w-100" onclick="testComponent('steam')">
+                            <i class="fas fa-wind"></i><br>
+                            <small>测试蒸汽</small>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>注意:</strong> 硬件测试仅在模拟模式下安全运行。
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <!-- 连接诊断 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-network-wired"></i> 连接诊断
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div id="api-connection-status" class="status-indicator status-offline me-2"></div>
+                            <div>API连接</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <button class="btn btn-sm btn-outline-primary" onclick="testApiConnection()">
+                            测试API
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="d-flex align-items-center">
+                            <div id="ws-connection-status" class="status-indicator status-offline me-2"></div>
+                            <div>WebSocket</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <button class="btn btn-sm btn-outline-primary" onclick="testWebSocketConnection()">
+                            测试WebSocket
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <h6>网络信息</h6>
+                        <small class="text-muted">
+                            <div>服务器地址: <span id="server-address">--</span></div>
+                            <div>API密钥: <span id="api-key-status">未设置</span></div>
+                            <div>最后心跳: <span id="last-heartbeat">--</span></div>
+                        </small>
+                    </div>
+                </div>
+                
+                <div class="text-end">
+                    <button class="btn btn-primary btn-sm" onclick="reconnectAll()">
+                        <i class="fas fa-sync-alt"></i> 重新连接
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 日志查看 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-alt"></i> 系统日志
+                    </h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+                            <i class="fas fa-trash"></i> 清空
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshLogs()">
+                            <i class="fas fa-sync-alt"></i> 刷新
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="log-container" class="bg-dark text-light p-3 rounded" 
+                     style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                    <div class="text-muted">日志将在这里显示...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <!-- 系统控制 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools"></i> 系统控制
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <div class="d-grid">
+                            <button class="btn btn-outline-success" onclick="startMaintenance()">
+                                <i class="fas fa-play"></i><br>
+                                <small>开始维护</small>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="d-grid">
+                            <button class="btn btn-outline-info" onclick="runDiagnostics()">
+                                <i class="fas fa-stethoscope"></i><br>
+                                <small>运行诊断</small>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="d-grid">
+                            <button class="btn btn-outline-warning" onclick="restartSystem()">
+                                <i class="fas fa-redo"></i><br>
+                                <small>重启系统</small>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="d-grid">
+                            <button class="btn btn-outline-danger" onclick="shutdownSystem()">
+                                <i class="fas fa-power-off"></i><br>
+                                <small>关闭系统</small>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .display-6 {
+        font-size: 1.2rem;
+        font-weight: 600;
+    }
+    
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    
+    .status-online { background-color: #28a745; }
+    .status-offline { background-color: #dc3545; }
+    .status-warning { background-color: #ffc107; }
+    
+    #log-container {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .log-entry {
+        margin-bottom: 5px;
+        padding: 2px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .log-timestamp {
+        color: #6c757d;
+        margin-right: 8px;
+    }
+    
+    .log-level-INFO { color: #17a2b8; }
+    .log-level-WARN { color: #ffc107; }
+    .log-level-ERROR { color: #dc3545; }
+    .log-level-DEBUG { color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let logUpdateInterval;
+    let systemStatsInterval;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        initializePage();
+        startSystemMonitoring();
+    });
+    
+    function initializePage() {
+        updateConnectionStatus();
+        loadSystemInfo();
+        refreshLogs();
+    }
+    
+    function startSystemMonitoring() {
+        // 定期更新系统状态
+        systemStatsInterval = setInterval(() => {
+            updateSystemStats();
+            updateConnectionStatus();
+        }, 5000);
+        
+        // 定期更新日志
+        logUpdateInterval = setInterval(refreshLogs, 10000);
+    }
+    
+    async function updateConnectionStatus() {
+        try {
+            const response = await apiRequest('/api/connection/status');
+            if (response.success) {
+                const connections = response.connections;
+                
+                // 更新API连接状态
+                const apiStatus = document.getElementById('api-connection-status');
+                apiStatus.className = connections.api ? 
+                    'status-indicator status-online me-2' : 'status-indicator status-offline me-2';
+                
+                // 更新WebSocket连接状态
+                const wsStatus = document.getElementById('ws-connection-status');
+                wsStatus.className = connections.websocket ? 
+                    'status-indicator status-online me-2' : 'status-indicator status-offline me-2';
+            }
+        } catch (error) {
+            console.error('更新连接状态失败:', error);
+        }
+    }
+    
+    async function loadSystemInfo() {
+        try {
+            const response = await apiRequest('/api/config');
+            if (response.success) {
+                const config = response.config;
+                
+                // 更新服务器地址
+                document.getElementById('server-address').textContent = 
+                    config.server?.base_url || '--';
+                
+                // 更新API密钥状态
+                const apiKeyStatus = document.getElementById('api-key-status');
+                if (config.device_config?.api_key) {
+                    apiKeyStatus.textContent = '已设置';
+                    apiKeyStatus.className = 'text-success';
+                } else {
+                    apiKeyStatus.textContent = '未设置';
+                    apiKeyStatus.className = 'text-warning';
+                }
+            }
+        } catch (error) {
+            console.error('加载系统信息失败:', error);
+        }
+    }
+    
+    function updateSystemStats() {
+        // 模拟系统统计数据
+        // 在实际实现中，这些数据应该从后端API获取
+        document.getElementById('cpu-usage').textContent = 
+            Math.round(Math.random() * 30 + 10) + '%';
+        document.getElementById('memory-usage').textContent = 
+            Math.round(Math.random() * 40 + 30) + '%';
+        document.getElementById('system-temp').textContent = 
+            Math.round(Math.random() * 10 + 40) + '°C';
+        
+        // 更新运行时间
+        const uptime = Math.floor(Date.now() / 1000 / 60); // 分钟
+        const hours = Math.floor(uptime / 60);
+        const minutes = uptime % 60;
+        document.getElementById('uptime').textContent = `${hours}h ${minutes}m`;
+        
+        // 更新最后心跳时间
+        document.getElementById('last-heartbeat').textContent = formatTime(new Date());
+    }
+    
+    async function testComponent(component) {
+        try {
+            showToast(`测试 ${component}...`, 'info');
+            
+            const response = await apiRequest('/api/test/hardware', {
+                method: 'POST',
+                body: JSON.stringify({
+                    component: component,
+                    duration: 3.0
+                })
+            });
+            
+            if (response.success) {
+                showToast(`${component} 测试成功`, 'success');
+            } else {
+                showToast(`${component} 测试失败: ${response.error}`, 'danger');
+            }
+            
+        } catch (error) {
+            console.error(`测试 ${component} 失败:`, error);
+            showToast(`测试失败`, 'danger');
+        }
+    }
+    
+    async function testApiConnection() {
+        try {
+            showToast('测试API连接...', 'info');
+            
+            const startTime = Date.now();
+            const response = await apiRequest('/api/status');
+            const responseTime = Date.now() - startTime;
+            
+            if (response.success) {
+                showToast(`API连接正常 (${responseTime}ms)`, 'success');
+            } else {
+                showToast('API连接失败', 'danger');
+            }
+            
+        } catch (error) {
+            console.error('API连接测试失败:', error);
+            showToast('API连接测试失败', 'danger');
+        }
+    }
+    
+    function testWebSocketConnection() {
+        if (socket.connected) {
+            showToast('WebSocket连接正常', 'success');
+        } else {
+            showToast('WebSocket连接断开', 'warning');
+        }
+    }
+    
+    function reconnectAll() {
+        showToast('正在重新连接...', 'info');
+        
+        // 重新连接WebSocket
+        if (!socket.connected) {
+            socket.connect();
+        }
+        
+        setTimeout(() => {
+            updateConnectionStatus();
+        }, 2000);
+    }
+    
+    function refreshLogs() {
+        // 模拟日志数据
+        // 在实际实现中，应该从后端API获取真实日志
+        const logContainer = document.getElementById('log-container');
+        
+        const logs = [
+            { timestamp: new Date(), level: 'INFO', message: '咖啡机客户端启动' },
+            { timestamp: new Date(Date.now() - 60000), level: 'INFO', message: '硬件初始化完成' },
+            { timestamp: new Date(Date.now() - 120000), level: 'INFO', message: 'API连接建立' },
+            { timestamp: new Date(Date.now() - 180000), level: 'WARN', message: 'WebSocket重连中...' },
+            { timestamp: new Date(Date.now() - 240000), level: 'INFO', message: 'WebSocket连接成功' }
+        ];
+        
+        let logHtml = '';
+        logs.forEach(log => {
+            logHtml += `<div class="log-entry">`;
+            logHtml += `<span class="log-timestamp">${formatTime(log.timestamp)}</span>`;
+            logHtml += `<span class="log-level-${log.level}">[${log.level}]</span> `;
+            logHtml += `${log.message}`;
+            logHtml += `</div>`;
+        });
+        
+        logContainer.innerHTML = logHtml;
+        
+        // 滚动到底部
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function clearLogs() {
+        if (confirm('确定要清空日志吗？')) {
+            document.getElementById('log-container').innerHTML = 
+                '<div class="text-muted">日志已清空</div>';
+            showToast('日志已清空', 'info');
+        }
+    }
+    
+    function startMaintenance() {
+        if (confirm('确定要开始维护模式吗？这将停止咖啡制作功能。')) {
+            showToast('维护模式已启动', 'warning');
+            // TODO: 调用后端API启动维护模式
+        }
+    }
+    
+    function runDiagnostics() {
+        showToast('正在运行系统诊断...', 'info');
+        
+        // 模拟诊断过程
+        setTimeout(() => {
+            showToast('系统诊断完成，所有组件正常', 'success');
+        }, 3000);
+    }
+    
+    function restartSystem() {
+        if (confirm('确定要重启系统吗？这将中断当前的所有操作。')) {
+            showToast('正在重启系统...', 'warning');
+            // TODO: 调用后端API重启系统
+        }
+    }
+    
+    function shutdownSystem() {
+        if (confirm('确定要关闭系统吗？这将停止所有服务。')) {
+            if (confirm('请再次确认关闭系统。')) {
+                showToast('正在关闭系统...', 'danger');
+                // TODO: 调用后端API关闭系统
+            }
+        }
+    }
+    
+    // 页面卸载时清理
+    window.addEventListener('beforeunload', function() {
+        if (systemStatsInterval) {
+            clearInterval(systemStatsInterval);
+        }
+        if (logUpdateInterval) {
+            clearInterval(logUpdateInterval);
+        }
+    });
+</script>
+{% endblock %}

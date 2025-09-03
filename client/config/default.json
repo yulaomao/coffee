@@ -1,0 +1,78 @@
+{
+    "device": {
+        "device_no": "DEMO-CLIENT-001",
+        "api_key": "your-device-api-key-here",
+        "device_type": "automatic",
+        "location": "演示咖啡厅"
+    },
+    "server": {
+        "base_url": "http://localhost:5000",
+        "websocket_url": "http://localhost:5000",
+        "timeout": 30,
+        "retry_interval": 10,
+        "max_retries": 3
+    },
+    "hardware": {
+        "simulation_mode": true,
+        "gpio_pins": {
+            "water_pump": 18,
+            "grinder": 19,
+            "heater": 20,
+            "steam_valve": 21
+        },
+        "sensors": {
+            "temperature": {"pin": 4, "type": "DS18B20"},
+            "water_level": {"pin": 5, "type": "ultrasonic"},
+            "pressure": {"pin": 6, "type": "analog"}
+        }
+    },
+    "coffee": {
+        "default_recipes": {
+            "espresso": {
+                "name": "意式浓缩",
+                "grind_time": 15,
+                "water_amount": 30,
+                "pressure": 9,
+                "temperature": 92,
+                "brew_time": 25
+            },
+            "americano": {
+                "name": "美式咖啡",
+                "grind_time": 15,
+                "water_amount": 120,
+                "pressure": 9,
+                "temperature": 92,
+                "brew_time": 25
+            },
+            "latte": {
+                "name": "拿铁咖啡",
+                "grind_time": 15,
+                "water_amount": 30,
+                "milk_amount": 150,
+                "pressure": 9,
+                "temperature": 92,
+                "brew_time": 25,
+                "steam_time": 30
+            }
+        }
+    },
+    "ui": {
+        "theme": "dark",
+        "language": "zh-CN",
+        "screen_timeout": 300,
+        "touch_sensitivity": "medium",
+        "sound_enabled": true
+    },
+    "maintenance": {
+        "auto_cleaning_enabled": true,
+        "cleaning_interval": 7200,
+        "descaling_reminder": 168,
+        "cup_count_reset": 1000
+    },
+    "logging": {
+        "level": "INFO",
+        "max_file_size": "10MB",
+        "backup_count": 5,
+        "log_to_server": true
+    }
+}

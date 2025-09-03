@@ -322,26 +322,14 @@ class MachineLog(db.Model, TimestampMixin):
 
 
 class ClientCommand(db.Model, TimestampMixin):
-    """客户端命令模型 - 扩展自RemoteCommand"""
+    """客户端命令模型 - 用于设备端命令队列"""
     __tablename__ = "client_commands"
     id: Mapped[int] = mapped_column(primary_key=True)
-    command_id: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False, index=True)
-    
-    # 命令信息
-    command_type: Mapped[str] = mapped_column(nullable=False)
-    parameters: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    
-    # 状态信息
-    status: Mapped[str] = mapped_column(nullable=False, default="pending")  # pending/sent/executing/success/failed
-    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    
-    # 执行结果
-    result: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    executed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    error_message: Mapped[Optional[str]] = mapped_column(nullable=True)
-    
-    # 优先级和超时
-    priority: Mapped[int] = mapped_column(nullable=False, default=0)
-    timeout_seconds: Mapped[Optional[int]] = mapped_column(nullable=True)
+    command_id: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
+    command_type: Mapped[str] = mapped_column(nullable=False)  # brew, clean, update, etc.
+    payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(nullable=False, default="pending", index=True)  # pending/sent/completed/failed
+    priority: Mapped[int] = mapped_column(nullable=False, default=1)  # 1=low, 2=normal, 3=high, 4=urgent
     expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    result: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)

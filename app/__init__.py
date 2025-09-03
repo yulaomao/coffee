@@ -82,7 +82,7 @@ def create_app() -> Flask:
     start_background_worker(app)
 
     # 注册蓝图
-    from .blueprints import auth, admin, devices, orders, materials, faults, upgrades, finance, operation_logs, recipes, simulate, api_docs, client_api, device_monitoring
+    from .blueprints import auth, admin, devices, orders, materials, faults, upgrades, finance, operation_logs, recipes, simulate, api_docs, client_api, device_api, command_dispatch
     app.register_blueprint(auth.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(devices.bp)
@@ -96,7 +96,8 @@ def create_app() -> Flask:
     app.register_blueprint(simulate.bp)
     app.register_blueprint(api_docs.bp)
     app.register_blueprint(client_api.bp)
-    app.register_blueprint(device_monitoring.bp)
+    app.register_blueprint(device_api.bp)
+    app.register_blueprint(command_dispatch.bp)
 
     # JWT 回调：identity 直接是 dict（包含 id/role/merchant_id）
     @jwt.user_identity_loader

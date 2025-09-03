@@ -1,6 +1,0 @@
-This folder is reserved for Alembic migrations. To initialize, run:
-  flask db init
-  flask db migrate -m "init"
-  flask db upgrade
-
-In this project, simple development may rely on create_all, but for stable schema evolution, prefer Alembic.

@@ -45,15 +45,28 @@ class User(db.Model, TimestampMixin):
     role: Mapped[str] = mapped_column(nullable=False, index=True)  # superadmin/merchant_admin/ops_engineer/viewer/finance
     merchant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("merchants.id"), nullable=True, index=True)
     wx_bind_info: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True, index=True)
 
     merchant = relationship("Merchant", back_populates="users")
+    
+    def set_password(self, password: str) -> None:
+        """Set password hash."""
+        from werkzeug.security import generate_password_hash
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password: str) -> bool:
+        """Check if password matches hash."""
+        from werkzeug.security import check_password_hash
+        return check_password_hash(self.password_hash, password)
 
 
 class Product(db.Model, TimestampMixin):
     __tablename__ = "product_catalog"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(nullable=True)
     price: Mapped[float] = mapped_column(nullable=False, default=10.0)
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True, index=True)
 
 
 class MaterialCatalog(db.Model, TimestampMixin):

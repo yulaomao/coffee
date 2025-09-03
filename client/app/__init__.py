@@ -6,11 +6,16 @@
 import os
 import json
 import logging
-from flask import Flask
-from flask_socketio import SocketIO
 
 # 全局对象
-socketio = SocketIO()
+socketio = None
+
+try:
+    from flask import Flask
+    from flask_socketio import SocketIO
+    _flask_available = True
+except ImportError:
+    _flask_available = False
 
 def load_config():
     """加载配置文件"""
@@ -47,6 +52,9 @@ def setup_logging(config):
 
 def create_app():
     """创建Flask应用"""
+    if not _flask_available:
+        raise ImportError("Flask不可用，请安装依赖: pip install -r requirements.txt")
+    
     app = Flask(__name__)
     
     # 加载配置
@@ -58,6 +66,8 @@ def create_app():
     setup_logging(config)
     
     # 初始化SocketIO
+    global socketio
+    socketio = SocketIO()
     socketio.init_app(app, cors_allowed_origins="*")
     
     # 注册蓝图

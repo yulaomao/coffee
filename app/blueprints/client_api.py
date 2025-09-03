@@ -19,23 +19,44 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from ..extensions import db
 from ..models import Device, MachineStatus, MachineLog, ClientCommand, Merchant, UpgradePackage, RemoteCommand, CommandResult
 from ..utils.security import hash_password
+from ..utils.security_enhanced import (
+    rate_limit, strict_rate_limiter, default_rate_limiter,
+    require_signature, audit_security_event, SecurityAuditLogger,
+    generate_api_key, add_security_headers
+)
 import logging
 
 bp = Blueprint("client_api", __name__, url_prefix="/api/v1/client")
 logger = logging.getLogger(__name__)
 
 
+# 在每个响应中添加安全头部
+@bp.after_request
+def after_request(response):
+    return add_security_headers(response)
+
+
 def api_key_required(f):
-    """API Key认证装饰器"""
+    """API Key认证装饰器（增强版）"""
     @wraps(f)
     def decorated(*args, **kwargs):
         api_key = request.headers.get('X-API-Key') or request.headers.get('Authorization', '').replace('Bearer ', '')
         
         if not api_key:
+            SecurityAuditLogger.log_security_event(
+                'api_key_missing',
+                {'endpoint': request.endpoint, 'ip': request.remote_addr},
+                'warning'
+            )
             return jsonify({"error": "API key required", "code": "MISSING_API_KEY"}), 401
             
         device = Device.query.filter_by(api_key=api_key).first()
         if not device:
+            SecurityAuditLogger.log_security_event(
+                'api_key_invalid',
+                {'endpoint': request.endpoint, 'ip': request.remote_addr, 'api_key_hash': api_key[:8] + '***'},
+                'warning'
+            )
             return jsonify({"error": "Invalid API key", "code": "INVALID_API_KEY"}), 401
             
         # 更新设备最后访问时间
@@ -52,9 +73,11 @@ def api_key_required(f):
 # ========== 认证接口 ==========
 
 @bp.route("/register", methods=["POST"])
+@rate_limit(strict_rate_limiter)  # 严格速率限制
+@audit_security_event('device_registration', 'info')
 def register_device():
     """
-    设备注册接口
+    设备注册接口（增强安全版）
     POST /api/v1/client/register
     
     请求体:
@@ -79,6 +102,11 @@ def register_device():
             
         # 验证预共享密钥 (在生产环境中应该从配置中读取)
         if pre_shared_key != current_app.config.get("DEVICE_REGISTRATION_KEY", "default_registration_key"):
+            SecurityAuditLogger.log_security_event(
+                'device_registration_invalid_psk',
+                {'device_no': device_no, 'ip': request.remote_addr},
+                'warning'
+            )
             return jsonify({
                 "error": "Invalid pre-shared key", 
                 "code": "INVALID_PSK"
@@ -88,6 +116,11 @@ def register_device():
         existing_device = Device.query.filter_by(device_no=device_no).first()
         if existing_device:
             if existing_device.api_key:
+                SecurityAuditLogger.log_security_event(
+                    'device_registration_duplicate',
+                    {'device_no': device_no, 'ip': request.remote_addr},
+                    'warning'
+                )
                 return jsonify({
                     "error": "Device already registered", 
                     "code": "ALREADY_REGISTERED"
@@ -111,14 +144,20 @@ def register_device():
             )
             db.session.add(existing_device)
             
-        # 生成API密钥
-        api_key = secrets.token_urlsafe(32)
+        # 生成安全的API密钥
+        api_key = generate_api_key()
         existing_device.api_key = api_key
         existing_device.api_key_created_at = datetime.utcnow()
         existing_device.last_seen = datetime.utcnow()
         existing_device.ip_address = request.remote_addr
         
         db.session.commit()
+        
+        SecurityAuditLogger.log_security_event(
+            'device_registration_success',
+            {'device_no': device_no, 'device_id': existing_device.id},
+            'info'
+        )
         
         return jsonify({
             "success": True,
@@ -137,7 +176,9 @@ def register_device():
 
 
 @bp.route("/auth", methods=["POST"])
+@rate_limit(default_rate_limiter)
 @api_key_required
+@audit_security_event('device_authentication', 'info')
 def authenticate_device():
     """
     设备认证获取JWT令牌
@@ -157,6 +198,12 @@ def authenticate_device():
         }
         
         access_token = create_access_token(identity=token_data)
+        
+        SecurityAuditLogger.log_security_event(
+            'device_authentication_success',
+            {'device_no': device.device_no, 'device_id': device.id},
+            'info'
+        )
         
         return jsonify({
             "success": True,
@@ -181,6 +228,7 @@ def authenticate_device():
 # ========== 状态接口 ==========
 
 @bp.route("/status", methods=["POST"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def report_status():
     """
@@ -188,18 +236,6 @@ def report_status():
     POST /api/v1/client/status
     
     Headers: X-API-Key: <api_key>
-    请求体:
-    {
-        "status": "online",
-        "temperature": 85.5,
-        "water_level": 80.0,
-        "pressure": 9.0,
-        "cups_made_today": 25,
-        "cups_made_total": 1250,
-        "running_time": 3600,
-        "material_status": {"coffee": 80, "milk": 60},
-        "raw_data": {...}
-    }
     """
     try:
         device = request.current_device
@@ -226,6 +262,17 @@ def report_status():
         db.session.add(status_record)
         db.session.commit()
         
+        # 实时推送状态到WebSocket
+        try:
+            from .websocket import broadcast_to_admins
+            broadcast_to_admins('device_status_update', {
+                'device_no': device.device_no,
+                'status': data,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+        except ImportError:
+            pass  # WebSocket not available
+        
         return jsonify({
             "success": True,
             "message": "Status reported successfully"
@@ -241,14 +288,10 @@ def report_status():
 
 
 @bp.route("/stats", methods=["GET"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def get_stats():
-    """
-    获取设备统计信息
-    GET /api/v1/client/stats
-    
-    Headers: X-API-Key: <api_key>
-    """
+    """获取设备统计信息"""
     try:
         device = request.current_device
         
@@ -293,18 +336,14 @@ def get_stats():
 # ========== 控制接口 ==========
 
 @bp.route("/commands", methods=["GET"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def get_commands():
-    """
-    获取待执行命令
-    GET /api/v1/client/commands
-    
-    Headers: X-API-Key: <api_key>
-    """
+    """获取待执行命令"""
     try:
         device = request.current_device
         
-        # 获取待执行的命令 (包括新的ClientCommand和旧的RemoteCommand)
+        # 获取待执行的命令
         pending_commands = []
         
         # 新的ClientCommand
@@ -361,22 +400,10 @@ def get_commands():
 
 
 @bp.route("/command-result", methods=["POST"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def report_command_result():
-    """
-    上报命令执行结果
-    POST /api/v1/client/command-result
-    
-    Headers: X-API-Key: <api_key>
-    请求体:
-    {
-        "command_id": "cmd-123",
-        "success": true,
-        "result": {...},
-        "message": "Command executed successfully",
-        "execution_time": 1500
-    }
-    """
+    """上报命令执行结果"""
     try:
         device = request.current_device
         data = request.get_json() or {}
@@ -407,7 +434,7 @@ def report_command_result():
             remote_command.result_payload = result
             remote_command.result_at = datetime.utcnow()
         
-        # 记录CommandResult (兼容旧系统)
+        # 记录CommandResult
         command_result = CommandResult(
             command_id=command_id,
             device_id=device.id,
@@ -418,6 +445,18 @@ def report_command_result():
         
         db.session.add(command_result)
         db.session.commit()
+        
+        # 实时推送结果到WebSocket
+        try:
+            from .websocket import broadcast_to_admins
+            broadcast_to_admins('command_result', {
+                'device_no': device.device_no,
+                'command_id': command_id,
+                'result': data,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+        except ImportError:
+            pass  # WebSocket not available
         
         return jsonify({
             "success": True,
@@ -436,14 +475,10 @@ def report_command_result():
 # ========== 配置接口 ==========
 
 @bp.route("/config", methods=["GET"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def get_config():
-    """
-    获取设备配置
-    GET /api/v1/client/config
-    
-    Headers: X-API-Key: <api_key>
-    """
+    """获取设备配置"""
     try:
         device = request.current_device
         
@@ -486,19 +521,10 @@ def get_config():
 
 
 @bp.route("/config", methods=["PUT"])
+@rate_limit(strict_rate_limiter)  # 配置更新使用严格限制
 @api_key_required 
 def update_config():
-    """
-    更新设备配置 (有限支持设备端配置更新)
-    PUT /api/v1/client/config
-    
-    Headers: X-API-Key: <api_key>
-    请求体:
-    {
-        "log_level": "debug",
-        "custom_settings": {...}
-    }
-    """
+    """更新设备配置（有限支持设备端配置更新）"""
     try:
         device = request.current_device
         data = request.get_json() or {}
@@ -532,25 +558,10 @@ def update_config():
 # ========== 维护接口 ==========
 
 @bp.route("/logs", methods=["POST"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def upload_logs():
-    """
-    上传设备日志
-    POST /api/v1/client/logs
-    
-    Headers: X-API-Key: <api_key>
-    请求体:
-    {
-        "logs": [
-            {
-                "level": "info",
-                "message": "Coffee brewing started",
-                "timestamp": "2024-01-01T10:00:00Z",
-                "context": {...}
-            }
-        ]
-    }
-    """
+    """上传设备日志"""
     try:
         device = request.current_device
         data = request.get_json() or {}
@@ -578,6 +589,19 @@ def upload_logs():
         if log_records:
             db.session.add_all(log_records)
             db.session.commit()
+            
+            # 检查是否有错误或警告日志需要实时推送
+            error_logs = [log for log in logs if isinstance(log, dict) and log.get('level') in ['error', 'warning']]
+            if error_logs:
+                try:
+                    from .websocket import broadcast_to_admins
+                    broadcast_to_admins('device_log_alert', {
+                        'device_no': device.device_no,
+                        'logs': error_logs,
+                        'timestamp': datetime.utcnow().isoformat()
+                    })
+                except ImportError:
+                    pass  # WebSocket not available
         
         return jsonify({
             "success": True,
@@ -595,14 +619,10 @@ def upload_logs():
 
 
 @bp.route("/update", methods=["GET"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def check_update():
-    """
-    检查更新
-    GET /api/v1/client/update
-    
-    Headers: X-API-Key: <api_key>
-    """
+    """检查更新"""
     try:
         device = request.current_device
         
@@ -620,7 +640,7 @@ def check_update():
         current_version = device.firmware_version or "0.0.0"
         latest_version = latest_package.version
         
-        # 简单版本比较 (生产环境应使用更复杂的版本比较逻辑)
+        # 简单版本比较
         update_available = current_version != latest_version
         
         response = {
@@ -654,14 +674,10 @@ def check_update():
 # ========== 健康检查和调试接口 ==========
 
 @bp.route("/ping", methods=["GET"])
+@rate_limit(default_rate_limiter)
 @api_key_required
 def ping():
-    """
-    健康检查接口
-    GET /api/v1/client/ping
-    
-    Headers: X-API-Key: <api_key>
-    """
+    """健康检查接口"""
     device = request.current_device
     return jsonify({
         "success": True,
@@ -669,6 +685,56 @@ def ping():
         "device_no": device.device_no,
         "server_time": datetime.utcnow().isoformat()
     })
+
+
+@bp.route("/websocket/status", methods=["GET"])
+@api_key_required
+def websocket_status():
+    """获取WebSocket连接状态"""
+    device = request.current_device
+    
+    try:
+        from .websocket import get_connection_stats, device_connections
+        
+        stats = get_connection_stats()
+        is_connected = device.device_no in device_connections
+        
+        return jsonify({
+            "success": True,
+            "websocket_connected": is_connected,
+            "device_no": device.device_no,
+            "connection_stats": stats
+        })
+        
+    except Exception as e:
+        logger.error(f"WebSocket status error: {e}")
+        return jsonify({
+            "success": False,
+            "websocket_connected": False,
+            "error": "Failed to get WebSocket status"
+        })
+
+
+# ========== WebSocket 管理接口 ==========
+
+@bp.route("/admin/websocket/stats", methods=["GET"])
+def admin_websocket_stats():
+    """管理员获取WebSocket连接统计"""
+    try:
+        from .websocket import get_connection_stats
+        stats = get_connection_stats()
+        
+        return jsonify({
+            "success": True,
+            "stats": stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Admin WebSocket stats error: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to get WebSocket stats"
+        })
 
 
 # ========== 错误处理 ==========
@@ -695,3 +761,12 @@ def bad_request(error):
         "error": "Bad request",
         "code": "BAD_REQUEST"
     }), 400
+
+
+@bp.errorhandler(429)
+def rate_limit_exceeded(error):
+    return jsonify({
+        "error": "Rate limit exceeded",
+        "code": "RATE_LIMIT_EXCEEDED",
+        "message": "Too many requests. Please try again later."
+    }), 429

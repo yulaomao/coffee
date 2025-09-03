@@ -27,6 +27,10 @@ class Config:
     
     # Device registration
     DEVICE_REGISTRATION_KEY: str = os.environ.get("DEVICE_REGISTRATION_KEY", "default_registration_key")
+    
+    # Security features
+    ENABLE_REQUEST_SIGNATURE: bool = os.environ.get("ENABLE_REQUEST_SIGNATURE", "false").lower() == "true"
+    ENABLE_RATE_LIMITING: bool = os.environ.get("ENABLE_RATE_LIMITING", "true").lower() == "true"
 
     # Swagger
     SWAGGER = {

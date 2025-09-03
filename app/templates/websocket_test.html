@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket测试 - 咖啡机管理系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.js"></script>
+</head>
+<body>
+    <div class="container-fluid mt-4">
+        <h2>WebSocket 实时通信测试</h2>
+        
+        <div class="row">
+            <!-- 设备端测试 -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>设备端 WebSocket</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">API Key:</label>
+                            <input type="text" id="deviceApiKey" class="form-control" 
+                                   placeholder="输入设备API Key">
+                        </div>
+                        <button id="connectDevice" class="btn btn-primary">连接设备</button>
+                        <button id="disconnectDevice" class="btn btn-secondary">断开连接</button>
+                        <button id="sendHeartbeat" class="btn btn-info">发送心跳</button>
+                        
+                        <hr>
+                        
+                        <div class="mb-3">
+                            <button id="sendStatus" class="btn btn-success">发送状态</button>
+                            <button id="sendLog" class="btn btn-warning">发送日志</button>
+                        </div>
+                        
+                        <div id="deviceMessages" class="bg-light p-3" style="height: 200px; overflow-y: auto;">
+                            <small class="text-muted">设备消息将在这里显示...</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 管理员端测试 -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>管理员 WebSocket</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">JWT Token:</label>
+                            <input type="text" id="adminToken" class="form-control" 
+                                   placeholder="输入管理员JWT Token">
+                        </div>
+                        <button id="connectAdmin" class="btn btn-primary">连接管理员</button>
+                        <button id="disconnectAdmin" class="btn btn-secondary">断开连接</button>
+                        
+                        <hr>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">发送命令到设备:</label>
+                            <div class="input-group">
+                                <input type="text" id="targetDevice" class="form-control" placeholder="设备号">
+                                <button id="sendCommand" class="btn btn-success">发送命令</button>
+                            </div>
+                        </div>
+                        
+                        <div id="adminMessages" class="bg-light p-3" style="height: 200px; overflow-y: auto;">
+                            <small class="text-muted">管理员消息将在这里显示...</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 连接状态 -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>连接状态</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <span class="badge" id="deviceStatus">设备: 未连接</span>
+                            </div>
+                            <div class="col-md-6">
+                                <span class="badge" id="adminStatus">管理员: 未连接</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let deviceSocket = null;
+        let adminSocket = null;
+        
+        // 添加消息到显示区域
+        function addMessage(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const time = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-info';
+            element.innerHTML += `<div class="mb-1 ${className}"><small>[${time}] ${message}</small></div>`;
+            element.scrollTop = element.scrollHeight;
+        }
+        
+        // 设备端WebSocket
+        document.getElementById('connectDevice').onclick = () => {
+            const apiKey = document.getElementById('deviceApiKey').value;
+            if (!apiKey) {
+                alert('请输入API Key');
+                return;
+            }
+            
+            deviceSocket = io();
+            
+            deviceSocket.on('connect', () => {
+                addMessage('deviceMessages', '设备WebSocket已连接', 'success');
+                document.getElementById('deviceStatus').textContent = '设备: 已连接';
+                document.getElementById('deviceStatus').className = 'badge bg-success';
+                
+                // 发送设备认证
+                deviceSocket.emit('device_auth', { api_key: apiKey });
+            });
+            
+            deviceSocket.on('disconnect', () => {
+                addMessage('deviceMessages', '设备WebSocket已断开', 'error');
+                document.getElementById('deviceStatus').textContent = '设备: 未连接';
+                document.getElementById('deviceStatus').className = 'badge bg-secondary';
+            });
+            
+            deviceSocket.on('auth_success', (data) => {
+                addMessage('deviceMessages', `设备认证成功: ${data.message}`, 'success');
+            });
+            
+            deviceSocket.on('auth_error', (data) => {
+                addMessage('deviceMessages', `设备认证失败: ${data.error}`, 'error');
+            });
+            
+            deviceSocket.on('heartbeat_ack', (data) => {
+                addMessage('deviceMessages', `心跳确认: ${data.status}`);
+            });
+            
+            deviceSocket.on('new_command', (data) => {
+                addMessage('deviceMessages', `收到新命令: ${data.type} (${data.command_id})`, 'success');
+                // 模拟执行命令并返回结果
+                setTimeout(() => {
+                    deviceSocket.emit('device_command_result', {
+                        command_id: data.command_id,
+                        success: true,
+                        result: { status: 'completed', message: '命令执行成功' },
+                        execution_time: 1000
+                    });
+                }, 2000);
+            });
+            
+            deviceSocket.on('error', (data) => {
+                addMessage('deviceMessages', `错误: ${data.error}`, 'error');
+            });
+        };
+        
+        document.getElementById('disconnectDevice').onclick = () => {
+            if (deviceSocket) {
+                deviceSocket.disconnect();
+                deviceSocket = null;
+            }
+        };
+        
+        document.getElementById('sendHeartbeat').onclick = () => {
+            if (deviceSocket) {
+                deviceSocket.emit('device_heartbeat', { timestamp: Date.now() });
+                addMessage('deviceMessages', '发送心跳包');
+            }
+        };
+        
+        document.getElementById('sendStatus').onclick = () => {
+            if (deviceSocket) {
+                deviceSocket.emit('device_status', {
+                    status: 'online',
+                    temperature: 85.5,
+                    water_level: 75.0,
+                    pressure: 9.2,
+                    cups_made_today: Math.floor(Math.random() * 50),
+                    material_status: { coffee: 80, milk: 60 }
+                });
+                addMessage('deviceMessages', '发送设备状态');
+            }
+        };
+        
+        document.getElementById('sendLog').onclick = () => {
+            if (deviceSocket) {
+                deviceSocket.emit('device_log', {
+                    level: 'info',
+                    message: '咖啡制作完成',
+                    context: { user_id: 'test_user', duration: 45 }
+                });
+                addMessage('deviceMessages', '发送设备日志');
+            }
+        };
+        
+        // 管理员端WebSocket
+        document.getElementById('connectAdmin').onclick = () => {
+            const token = document.getElementById('adminToken').value;
+            if (!token) {
+                alert('请输入JWT Token');
+                return;
+            }
+            
+            adminSocket = io();
+            
+            adminSocket.on('connect', () => {
+                addMessage('adminMessages', '管理员WebSocket已连接', 'success');
+                document.getElementById('adminStatus').textContent = '管理员: 已连接';
+                document.getElementById('adminStatus').className = 'badge bg-success';
+                
+                // 发送管理员认证
+                adminSocket.emit('admin_auth', { token: token });
+            });
+            
+            adminSocket.on('disconnect', () => {
+                addMessage('adminMessages', '管理员WebSocket已断开', 'error');
+                document.getElementById('adminStatus').textContent = '管理员: 未连接';
+                document.getElementById('adminStatus').className = 'badge bg-secondary';
+            });
+            
+            adminSocket.on('auth_success', (data) => {
+                addMessage('adminMessages', `管理员认证成功: ${data.username} (${data.role})`, 'success');
+            });
+            
+            adminSocket.on('auth_error', (data) => {
+                addMessage('adminMessages', `管理员认证失败: ${data.error}`, 'error');
+            });
+            
+            adminSocket.on('online_devices', (data) => {
+                addMessage('adminMessages', `在线设备: ${data.devices.join(', ')}`);
+            });
+            
+            adminSocket.on('device_online', (data) => {
+                addMessage('adminMessages', `设备上线: ${data.device_no}`, 'success');
+            });
+            
+            adminSocket.on('device_offline', (data) => {
+                addMessage('adminMessages', `设备离线: ${data.device_no}`, 'error');
+            });
+            
+            adminSocket.on('device_status_update', (data) => {
+                addMessage('adminMessages', `设备状态更新: ${data.device_no} - 温度: ${data.status.temperature}°C`);
+            });
+            
+            adminSocket.on('command_result', (data) => {
+                addMessage('adminMessages', `命令结果: ${data.device_no} - ${data.result.success ? '成功' : '失败'}`, 
+                          data.result.success ? 'success' : 'error');
+            });
+            
+            adminSocket.on('device_log_alert', (data) => {
+                addMessage('adminMessages', `设备日志警报: ${data.device_no} - ${data.log.level}: ${data.log.message}`, 'error');
+            });
+        };
+        
+        document.getElementById('disconnectAdmin').onclick = () => {
+            if (adminSocket) {
+                adminSocket.disconnect();
+                adminSocket = null;
+            }
+        };
+        
+        document.getElementById('sendCommand').onclick = () => {
+            if (adminSocket) {
+                const deviceNo = document.getElementById('targetDevice').value;
+                if (!deviceNo) {
+                    alert('请输入设备号');
+                    return;
+                }
+                
+                adminSocket.emit('admin_send_command', {
+                    device_no: deviceNo,
+                    command_type: 'make_coffee',
+                    parameters: { recipe: 'espresso', size: 'medium' },
+                    priority: 1,
+                    timeout_seconds: 30
+                });
+                addMessage('adminMessages', `发送命令到设备: ${deviceNo}`);
+            }
+        };
+    </script>
+</body>
+</html>

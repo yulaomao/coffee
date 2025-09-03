@@ -23,6 +23,11 @@ def create_app() -> Flask:
     migrate.init_app(app, db)
     jwt.init_app(app)
     swagger.init_app(app)
+    
+    # 初始化 WebSocket
+    from .blueprints.websocket import init_socketio
+    socketio = init_socketio(app)
+    
     # 启动 APScheduler（BackgroundScheduler 无 init_app 方法）
     # 确保仅启动一次
     try:
@@ -102,5 +107,13 @@ def create_app() -> Flask:
     def index():
         # 始终重定向到登录页面，避免在根路径提交表单导致 405
         return redirect(url_for("auth.login_page"))
+
+    # WebSocket测试页面
+    @app.route("/websocket-test")
+    def websocket_test():
+        return render_template("websocket_test.html")
+
+    # 将socketio实例附加到app以便在其他地方使用
+    app.socketio = socketio
 
     return app

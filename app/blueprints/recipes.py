@@ -261,25 +261,84 @@ def _make_recipe_package(recipe: Recipe, uploader_id: int | None) -> RecipePacka
 @bp.route("/api/recipes/<int:rid>/publish", methods=["POST"])
 @jwt_required(optional=True)
 def publish_recipe(rid: int):
+    """
+    Publish Recipe Package (Section 5.8)
+    POST /api/recipes/{id}/publish
+    
+    Response example:
+    {
+        "ok": true,
+        "package": {
+            "package_id": "pkg-001",
+            "package_url": "http://host/packages/pkg-001.zip",
+            "md5": "abcd1234",
+            "size": 123456
+        }
+    }
+    """
     r = Recipe.query.get_or_404(rid)
-    u = _current_claims(); uid = u.get('id') if u else None
-    # 版本唯一性校验（同名+同版本不可重复）
-    dup = Recipe.query.filter(Recipe.name == r.name, Recipe.version == r.version, Recipe.id != r.id).first()
+    u = _current_claims()
+    uid = u.get('id') if u else None
+    
+    # Validate version uniqueness (same name + same version not allowed)
+    dup = Recipe.query.filter(
+        Recipe.name == r.name, 
+        Recipe.version == r.version, 
+        Recipe.id != r.id
+    ).first()
     if dup:
-        return jsonify({"ok": False, "message": "版本重复：相同名称与版本已存在"}), 400
+        return jsonify({
+            "ok": False, 
+            "error": "Version conflict: Recipe with same name and version already exists"
+        }), 400
+    
+    # Update recipe status
     r.status = 'published'
     db.session.commit()
+    
+    # Generate package
     pkg = _make_recipe_package(r, uid)
+    
+    # Generate package URL
+    package_url = f"{request.url_root.rstrip('/')}/api/recipes/packages/{pkg.id}/download"
+    
+    # Log operation
     try:
-        db.session.add(OperationLog(user_id=uid or 0, action='recipe_publish', target_type='recipe', target_id=r.id, ip=None, user_agent=None)); db.session.commit()
-    except Exception: db.session.rollback()
-    return jsonify({"ok": True, "package_id": pkg.id, "md5": pkg.md5, "path": pkg.package_path})
+        db.session.add(OperationLog(
+            user_id=uid or 0, 
+            action='recipe_publish', 
+            target_type='recipe', 
+            target_id=r.id, 
+            ip=request.remote_addr, 
+            user_agent=request.headers.get('User-Agent')
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    return jsonify({
+        "ok": True,
+        "package": {
+            "package_id": f"pkg-{pkg.id:03d}",
+            "package_url": package_url,
+            "md5": pkg.md5,
+            "size": pkg.size_bytes
+        }
+    })
 
 
 @bp.route("/api/recipes/<int:rid>/package/download")
 @jwt_required(optional=True)
 def download_recipe_package(rid: int):
     pkg = RecipePackage.query.filter_by(recipe_id=rid).order_by(RecipePackage.created_at.desc()).first_or_404()
+    return send_file(pkg.package_path, as_attachment=True, download_name=pkg.package_name)
+
+
+@bp.route("/api/recipes/packages/<int:package_id>/download")
+@jwt_required(optional=True)
+def download_package_by_package_id(package_id: int):
+    """Download package by package ID"""
+    pkg = RecipePackage.query.get_or_404(package_id)
     return send_file(pkg.package_path, as_attachment=True, download_name=pkg.package_name)
 
 

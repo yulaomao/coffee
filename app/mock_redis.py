@@ -130,6 +130,10 @@ class MockPipeline:
         self.commands.append(('lpush', key, values))
         return self
     
+    def ltrim(self, key, start, end):
+        self.commands.append(('ltrim', key, start, end))
+        return self
+    
     def incr(self, key):
         self.commands.append(('incr', key))
         return self
@@ -160,6 +164,10 @@ class MockPipeline:
             elif cmd[0] == 'lpush':
                 _, key, values = cmd
                 result = self.redis.lpush(key, *values)
+                results.append(result)
+            elif cmd[0] == 'ltrim':
+                _, key, start, end = cmd
+                result = self.redis.ltrim(key, start, end)
                 results.append(result)
             elif cmd[0] == 'incr':
                 _, key = cmd

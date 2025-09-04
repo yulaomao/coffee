@@ -122,13 +122,9 @@ class RedisDataStore:
     
     # ===================== 设备安装点（Location） =====================
     
-    def get_device_location(self, device_id: str) -> Optional[Dict[str, Any]]:
-        """获取设备安装点信息"""
-        key = self._device_key(device_id, "loc")
-        return redis.hgetall(key) or None
-    
     def set_device_location(self, device_id: str, location_data: Dict[str, Any]) -> bool:
         """设置设备安装点信息"""
+        redis = self._get_redis()
         key = self._device_key(device_id, "loc")
         location_data['updated_ts'] = self._now_ts()
         
@@ -139,12 +135,19 @@ class RedisDataStore:
     
     def _add_location_history(self, device_id: str, location_data: Dict[str, Any]):
         """添加位置变更历史记录"""
+        redis = self._get_redis()
         stream_key = self._device_key(device_id, "stream:loc_hist")
         redis.xadd(stream_key, {
             "action": "location_update",
             "data": self._to_json(location_data),
             "ts": self._now_ts()
         })
+    
+    def get_device_location(self, device_id: str) -> Optional[Dict[str, Any]]:
+        """获取设备安装点信息"""
+        redis = self._get_redis()
+        key = self._device_key(device_id, "loc")
+        return redis.hgetall(key) or None
     
     # ===================== 料盒与物料（Bins/Materials） =====================
     
@@ -480,11 +483,13 @@ class RedisDataStore:
     
     def get_material_dict(self, material_code: str) -> Optional[Dict[str, Any]]:
         """获取物料字典信息"""
+        redis = self._get_redis()
         key = self._global_key(f"dict:material:{material_code}")
         return redis.hgetall(key) or None
     
     def set_material_dict(self, material_code: str, material_data: Dict[str, Any]) -> bool:
         """设置物料字典信息"""
+        redis = self._get_redis()
         key = self._global_key(f"dict:material:{material_code}")
         all_key = self._global_key("dict:material:all")
         
@@ -496,6 +501,7 @@ class RedisDataStore:
     
     def get_all_materials(self) -> List[str]:
         """获取所有物料代码列表"""
+        redis = self._get_redis()
         all_key = self._global_key("dict:material:all")
         return list(redis.smembers(all_key))
     
@@ -503,11 +509,13 @@ class RedisDataStore:
     
     def get_device_installed_packages(self, device_id: str) -> List[str]:
         """获取设备已安装包列表"""
+        redis = self._get_redis()
         key = self._device_key(device_id, "packages:installed")
         return list(redis.smembers(key))
     
     def install_device_package(self, device_id: str, package_id: str, install_meta: Dict[str, Any]) -> bool:
         """安装设备包"""
+        redis = self._get_redis()
         installed_key = self._device_key(device_id, "packages:installed")
         package_key = self._device_key(device_id, f"package:{package_id}")
         
@@ -521,16 +529,19 @@ class RedisDataStore:
     
     def get_device_active_recipes(self, device_id: str) -> List[str]:
         """获取设备激活配方列表"""
+        redis = self._get_redis()
         key = self._device_key(device_id, "recipes:active")
         return list(redis.smembers(key))
     
     def activate_device_recipe(self, device_id: str, recipe_id: str) -> bool:
         """激活设备配方"""
+        redis = self._get_redis()
         key = self._device_key(device_id, "recipes:active")
         return redis.sadd(key, recipe_id) >= 0
     
     def deactivate_device_recipe(self, device_id: str, recipe_id: str) -> bool:
         """停用设备配方"""
+        redis = self._get_redis()
         key = self._device_key(device_id, "recipes:active")
         return redis.srem(key, recipe_id) >= 0
     
@@ -539,6 +550,7 @@ class RedisDataStore:
     def add_device_audit_log(self, device_id: str, action: str, target: str, 
                            summary: str, payload: Optional[Dict[str, Any]] = None):
         """添加设备审计日志"""
+        redis = self._get_redis()
         stream_key = self._device_key(device_id, "stream:audit")
         log_data = {
             "action": action,
@@ -553,12 +565,14 @@ class RedisDataStore:
     
     def get_device_recent_logs(self, device_id: str, limit: int = 100) -> List[Dict[str, Any]]:
         """获取设备最近操作日志"""
+        redis = self._get_redis()
         list_key = self._device_key(device_id, "oplog:recent")
         logs = redis.lrange(list_key, 0, limit - 1)
         return [self._from_json(log) for log in logs]
     
     def add_device_recent_log(self, device_id: str, log_data: Dict[str, Any]):
         """添加设备最近操作日志（有限列表）"""
+        redis = self._get_redis()
         list_key = self._device_key(device_id, "oplog:recent")
         pipe = redis.pipeline()
         pipe.lpush(list_key, self._to_json(log_data))

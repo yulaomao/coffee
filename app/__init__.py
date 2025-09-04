@@ -87,10 +87,11 @@ def create_app() -> Flask:
     start_background_worker(app)
 
     # 注册蓝图
-    from .blueprints import auth, admin, devices, orders, materials, faults, upgrades, finance, operation_logs, recipes, simulate, api_docs, client_api, device_monitoring
+    from .blueprints import auth, admin, devices, orders, materials, faults, upgrades, finance, operation_logs, recipes, simulate, api_docs, client_api, device_monitoring, devices_redis
     app.register_blueprint(auth.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(devices.bp)
+    app.register_blueprint(devices_redis.bp)  # Redis版本设备API
     app.register_blueprint(orders.bp)
     app.register_blueprint(materials.bp)
     app.register_blueprint(faults.bp)

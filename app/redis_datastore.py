@@ -150,6 +150,7 @@ class RedisDataStore:
     
     def get_device_bins(self, device_id: str) -> List[Dict[str, Any]]:
         """获取设备所有料盒信息"""
+        redis = self._get_redis()
         bins_key = self._device_key(device_id, "bins")
         bin_indexes = redis.smembers(bins_key)
         
@@ -168,6 +169,7 @@ class RedisDataStore:
     
     def set_device_bin(self, device_id: str, bin_index: int, bin_data: Dict[str, Any]) -> bool:
         """设置设备料盒信息"""
+        redis = self._get_redis()
         bins_key = self._device_key(device_id, "bins")
         bin_key = self._device_key(device_id, f"bin:{bin_index}")
         
@@ -187,6 +189,7 @@ class RedisDataStore:
     
     def _update_low_material_status(self, device_id: str, bin_index: int, bin_data: Dict[str, Any]):
         """更新低料状态"""
+        redis = self._get_redis()
         low_key = self._device_key(device_id, "bins:low")
         remaining = float(bin_data.get('remaining', 0))
         capacity = float(bin_data.get('capacity', 100))
@@ -199,6 +202,7 @@ class RedisDataStore:
     
     def get_device_low_bins(self, device_id: str) -> List[str]:
         """获取设备低料料盒列表"""
+        redis = self._get_redis()
         low_key = self._device_key(device_id, "bins:low")
         return list(redis.smembers(low_key))
     
@@ -206,6 +210,7 @@ class RedisDataStore:
     
     def get_device_order(self, device_id: str, order_id: str) -> Optional[Dict[str, Any]]:
         """获取设备订单信息"""
+        redis = self._get_redis()
         key = self._device_key(device_id, f"order:{order_id}")
         order_data = redis.hgetall(key)
         if not order_data:
@@ -221,6 +226,7 @@ class RedisDataStore:
     
     def create_device_order(self, device_id: str, order_id: str, order_data: Dict[str, Any]) -> bool:
         """创建设备订单（幂等）"""
+        redis = self._get_redis()
         order_key = self._device_key(device_id, f"order:{order_id}")
         orders_index_key = self._device_key(device_id, "orders:by_ts")
         
@@ -270,6 +276,7 @@ class RedisDataStore:
     def get_device_orders_by_timerange(self, device_id: str, start_ts: int, end_ts: int, 
                                      limit: int = 100) -> List[Dict[str, Any]]:
         """按时间范围获取设备订单"""
+        redis = self._get_redis()
         index_key = self._device_key(device_id, "orders:by_ts")
         order_ids = redis.zrangebyscore(index_key, start_ts, end_ts, withscores=False, 
                                            start=0, num=limit)
@@ -284,6 +291,7 @@ class RedisDataStore:
     
     def get_device_daily_stats(self, device_id: str, day_str: str) -> Dict[str, Any]:
         """获取设备日统计数据"""
+        redis = self._get_redis()
         count_key = self._device_key(device_id, f"agg:orders:day:{day_str}:count")
         revenue_key = self._device_key(device_id, f"agg:orders:day:{day_str}:revenue_cents")
         
@@ -301,6 +309,7 @@ class RedisDataStore:
     
     def get_device_alarm(self, device_id: str, alarm_id: str) -> Optional[Dict[str, Any]]:
         """获取设备告警信息"""
+        redis = self._get_redis()
         key = self._device_key(device_id, f"alarm:{alarm_id}")
         alarm_data = redis.hgetall(key)
         if not alarm_data:
@@ -313,6 +322,7 @@ class RedisDataStore:
     
     def create_device_alarm(self, device_id: str, alarm_id: str, alarm_data: Dict[str, Any]) -> bool:
         """创建设备告警"""
+        redis = self._get_redis()
         alarm_key = self._device_key(device_id, f"alarm:{alarm_id}")
         alarms_index_key = self._device_key(device_id, "alarms:by_ts")
         
@@ -374,6 +384,7 @@ class RedisDataStore:
     
     def get_device_alarms_by_status(self, device_id: str, status: str) -> List[str]:
         """按状态获取设备告警ID列表"""
+        redis = self._get_redis()
         status_key = self._device_key(device_id, f"alarms:status:{status}")
         return list(redis.smembers(status_key))
     
@@ -381,6 +392,7 @@ class RedisDataStore:
     
     def get_device_command(self, device_id: str, command_id: str) -> Optional[Dict[str, Any]]:
         """获取设备命令信息"""
+        redis = self._get_redis()
         key = self._device_key(device_id, f"cmd:{command_id}")
         cmd_data = redis.hgetall(key)
         if not cmd_data:
@@ -396,6 +408,7 @@ class RedisDataStore:
     
     def create_device_command(self, device_id: str, command_id: str, command_data: Dict[str, Any]) -> bool:
         """创建设备命令"""
+        redis = self._get_redis()
         cmd_key = self._device_key(device_id, f"cmd:{command_id}")
         pending_queue_key = self._device_key(device_id, "q:cmd:pending")
         cmds_index_key = self._device_key(device_id, "cmds:by_ts")
@@ -427,6 +440,7 @@ class RedisDataStore:
     
     def pop_device_pending_command(self, device_id: str) -> Optional[str]:
         """从设备待执行队列中弹出命令"""
+        redis = self._get_redis()
         pending_queue_key = self._device_key(device_id, "q:cmd:pending")
         inflight_set_key = self._device_key(device_id, "cmd:inflight")
         
@@ -440,6 +454,7 @@ class RedisDataStore:
     def complete_device_command(self, device_id: str, command_id: str, status: str, 
                                result_payload: Optional[Dict[str, Any]] = None) -> bool:
         """完成设备命令执行"""
+        redis = self._get_redis()
         cmd_key = self._device_key(device_id, f"cmd:{command_id}")
         inflight_set_key = self._device_key(device_id, "cmd:inflight")
         

@@ -6,7 +6,7 @@ import os
 from datetime import timedelta
 from flask import Flask, render_template, redirect, url_for
 from .config import Config
-from .extensions import db, migrate, jwt, swagger, scheduler
+from .extensions import db, migrate, jwt, swagger, scheduler, redis_client
 from .models import User, Merchant
 from .utils.security import hash_password
 from .tasks.worker import start_background_worker
@@ -23,6 +23,11 @@ def create_app() -> Flask:
     migrate.init_app(app, db)
     jwt.init_app(app)
     swagger.init_app(app)
+    
+    # 初始化 Redis
+    import redis
+    from . import extensions
+    extensions.redis_client = redis.from_url(app.config["REDIS_URL"], decode_responses=app.config["REDIS_DECODE_RESPONSES"])
     
     # 初始化 WebSocket
     from .blueprints.websocket import init_socketio

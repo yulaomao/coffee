@@ -35,6 +35,8 @@ def init_socketio(app):
     """Initialize SocketIO with the Flask app"""
     global socketio
     if socketio is None:
+        if not hasattr(app, 'extensions'):
+            app.extensions = {}
         socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=False)
         register_socketio_handlers(socketio)
     return socketio

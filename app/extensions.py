@@ -5,6 +5,7 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from flasgger import Swagger
 from apscheduler.schedulers.background import BackgroundScheduler
+import redis
 
 # 全局扩展实例
 
@@ -13,5 +14,6 @@ migrate: Migrate = Migrate()
 jwt: JWTManager = JWTManager()
 swagger: Swagger = Swagger()
 scheduler: BackgroundScheduler = BackgroundScheduler()
+redis_client: redis.Redis = None  # Will be initialized in create_app
 # SocketIO will be initialized in __init__.py to avoid circular imports
 socketio = None

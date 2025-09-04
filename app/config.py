@@ -41,3 +41,7 @@ class Config:
 
     # APScheduler
     SCHEDULER_API_ENABLED = True
+
+    # Redis configuration
+    REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_DECODE_RESPONSES: bool = True
